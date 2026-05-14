@@ -32,10 +32,14 @@ pub fn app_get_dashboard(state: State<'_, AppState>) -> CommandResult<DashboardS
         .db
         .with_conn(|c| c.query_row("PRAGMA user_version", [], |r| r.get(0)))
         .unwrap_or(0);
+    let recent_scans = state
+        .scans
+        .latest_snapshots(None)
+        .map_err(|e| crate::error::CommandError::new("scan_error", e.to_string()))?;
 
     Ok(DashboardSnapshot {
-        agents: vec![],
-        recent_scans: vec![],
+        agents: state.agents.list(),
+        recent_scans,
         open_issues: vec![],
         recent_changes: vec![],
         bootstrap: BootstrapInfo {

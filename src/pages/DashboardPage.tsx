@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { ApiError, api, type DashboardSnapshot } from '../lib/api';
+import type { Agent } from '../types/domain';
 
 export default function DashboardPage() {
   const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
@@ -53,6 +54,15 @@ export default function DashboardPage() {
             <Card label="Recent changes" value={snapshot.recentChanges.length} />
           </section>
 
+          <section className="dashboard__section">
+            <h2 className="dashboard__section-title">Detected Agents</h2>
+            <div className="dashboard__agent-grid">
+              {snapshot.agents.map((agent) => (
+                <AgentCard key={agent.id} agent={agent} />
+              ))}
+            </div>
+          </section>
+
           <dl className="dashboard__bootstrap">
             <dt>Data dir</dt>
             <dd>{snapshot.bootstrap.dataDir}</dd>
@@ -63,6 +73,23 @@ export default function DashboardPage() {
           </dl>
         </>
       )}
+    </div>
+  );
+}
+
+function AgentCard({ agent }: { agent: Agent }) {
+  return (
+    <div className="dashboard__agent-card">
+      <div className="dashboard__agent-header">
+        <div>
+          <div className="dashboard__agent-name">{agent.displayName}</div>
+          <div className="dashboard__agent-kind">{agent.kind}</div>
+        </div>
+        <span className={`dashboard__status dashboard__status--${agent.healthStatus}`}>
+          {agent.installed ? 'Installed' : 'Not installed'}
+        </span>
+      </div>
+      <div className="dashboard__agent-version">{agent.version ?? 'No version detected'}</div>
     </div>
   );
 }
