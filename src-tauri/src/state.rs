@@ -4,7 +4,7 @@ use crate::adapters::{
     AdapterRegistry, ClaudeCodeAdapter, CodexAdapter, OpencodeAdapter, PiAdapter,
 };
 use crate::db::Database;
-use crate::services::{AgentService, AppDataService, ProjectService, ScanService};
+use crate::services::{AgentService, AppDataService, ProjectService, ResourceService, ScanService};
 
 /// Application state shared across Tauri commands.
 #[derive(Clone)]
@@ -14,6 +14,7 @@ pub struct AppState {
     pub registry: Arc<AdapterRegistry>,
     pub agents: AgentService,
     pub projects: ProjectService,
+    pub resources: ResourceService,
     pub scans: ScanService,
 }
 
@@ -28,6 +29,7 @@ impl AppState {
         let registry = Arc::new(reg);
         let agents = AgentService::new(registry.clone());
         let projects = ProjectService::new(db.clone());
+        let resources = ResourceService::new(db.clone());
         let scans = ScanService::new(db.clone(), registry.clone());
         Self {
             app_data,
@@ -35,6 +37,7 @@ impl AppState {
             registry,
             agents,
             projects,
+            resources,
             scans,
         }
     }

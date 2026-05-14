@@ -1,5 +1,11 @@
-import PagePlaceholder from './PagePlaceholder';
+import ResourceListPage from '../components/ResourceListPage';
 
 export default function PiResourcesPage() {
-  return <PagePlaceholder title="Pi Resources" subtitle="Pi extension resources" />;
+  return (
+    <ResourceListPage
+      title="Pi Resources"
+      subtitle="Read-only index of Pi skills, prompts, extensions, packages, themes, and settings."
+      resourceType="pi-resource"
+    />
+  );
 }

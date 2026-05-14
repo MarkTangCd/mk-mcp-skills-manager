@@ -110,6 +110,80 @@ export interface ResourceBinding {
   projectId: string | null;
   scopeType: ScopeType;
   enabled: boolean;
+  status?: string;
+  configPath?: string | null;
+}
+
+export interface ResourceBindingRecord extends ResourceBinding {
+  id: string;
+  projectName: string | null;
+  status: string;
+  configPath: string | null;
+  updatedAt: string;
+}
+
+export interface ResourceRecord {
+  id: string;
+  resourceType: ResourceType;
+  name: string;
+  slug: string | null;
+  agentKind: AgentKind | null;
+  sourcePath: string | null;
+  status: string;
+  payload: unknown;
+  updatedAt: string;
+  bindings: ResourceBindingRecord[];
+}
+
+export interface MatrixSource {
+  resourceId: string;
+  resourceName: string;
+  scopeType: ScopeType;
+  projectId: string | null;
+  configPath: string | null;
+  sourcePath: string | null;
+  enabled: boolean;
+  status: string;
+}
+
+export interface MatrixCell {
+  agentKind: AgentKind;
+  status: 'enabled' | 'disabled' | 'missing' | 'unknown';
+  sources: MatrixSource[];
+}
+
+export interface MatrixRow {
+  key: string;
+  name: string;
+  resourceType: ResourceType;
+  cells: MatrixCell[];
+}
+
+export interface PiResourceKindSummary {
+  resourceType: PiResourceKind;
+  total: number;
+  enabled: number;
+  disabled: number;
+  missing: number;
+  untrusted: number;
+}
+
+export interface PiResourceSummary {
+  total: number;
+  enabled: number;
+  disabled: number;
+  missing: number;
+  untrusted: number;
+  byKind: PiResourceKindSummary[];
+}
+
+export interface ProjectMatrix {
+  projectId: string;
+  agents: AgentKind[];
+  mcpMatrix: MatrixRow[];
+  skillsMatrix: MatrixRow[];
+  subAgentMatrix: MatrixRow[];
+  piResourceSummary: PiResourceSummary;
 }
 
 export interface ScanSummary {

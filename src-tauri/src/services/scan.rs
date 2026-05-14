@@ -15,6 +15,7 @@ use uuid::Uuid;
 use crate::adapters::{AdapterRegistry, ScanContext};
 use crate::db::{Database, DbError};
 use crate::domain::{AgentKind, ScanSnapshot, ScanSummary};
+use crate::services::{ResourceError, ResourceIndexer};
 
 #[derive(Debug, Error)]
 pub enum ScanError {
@@ -22,6 +23,8 @@ pub enum ScanError {
     Db(#[from] DbError),
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
+    #[error("resource index error: {0}")]
+    Resource(#[from] ResourceError),
 }
 
 pub type ScanResult<T> = Result<T, ScanError>;
@@ -59,11 +62,12 @@ impl ScanService {
             let kind = adapter.kind();
             let (summary, errors) = match adapter.scan(ctx) {
                 Ok(outcome) => {
-                    let mut s = outcome.summary;
+                    let mut s = outcome.summary.clone();
                     if s.total_resources == 0 {
                         s.total_resources =
                             s.mcp_count + s.skill_count + s.sub_agent_count + s.pi_resource_count;
                     }
+                    ResourceIndexer::new(self.db.clone()).index_scan(project_id, kind, &outcome)?;
                     let errors = outcome.errors;
                     (s, errors)
                 }

@@ -3,7 +3,7 @@ use tauri::State;
 use crate::adapters::ScanContext;
 use crate::domain::{AgentKind, Project, ScanSnapshot};
 use crate::error::{CommandError, CommandResult};
-use crate::services::ProjectError;
+use crate::services::{ProjectError, ProjectMatrix};
 use crate::state::AppState;
 
 impl From<ProjectError> for CommandError {
@@ -93,4 +93,13 @@ pub fn projects_latest_scans(
         .scans
         .latest_snapshots(Some(&id))
         .map_err(|e| CommandError::new("scan_error", e.to_string()))
+}
+
+#[tauri::command]
+pub fn projects_get_matrix(state: State<'_, AppState>, id: String) -> CommandResult<ProjectMatrix> {
+    state.projects.get(&id)?;
+    state
+        .resources
+        .project_matrix(&id)
+        .map_err(|e| CommandError::new("matrix_error", e.to_string()))
 }

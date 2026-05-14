@@ -1,5 +1,11 @@
-import PagePlaceholder from './PagePlaceholder';
+import ResourceListPage from '../components/ResourceListPage';
 
 export default function SkillsPage() {
-  return <PagePlaceholder title="Skills" subtitle="Installed skills" />;
+  return (
+    <ResourceListPage
+      title="Skills"
+      subtitle="Read-only index of configured skills."
+      resourceType="skill"
+    />
+  );
 }

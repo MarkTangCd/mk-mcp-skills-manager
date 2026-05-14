@@ -1,5 +1,11 @@
-import PagePlaceholder from './PagePlaceholder';
+import ResourceListPage from '../components/ResourceListPage';
 
 export default function SubAgentsPage() {
-  return <PagePlaceholder title="Sub-agents" subtitle="Sub-agent definitions" />;
+  return (
+    <ResourceListPage
+      title="Sub-agents"
+      subtitle="Read-only index of Claude Code and Codex sub-agents."
+      resourceType="sub-agent"
+    />
+  );
 }

@@ -8,6 +8,7 @@ pub mod changes;
 pub mod doctor;
 pub mod projects;
 pub mod prompts;
+pub mod resources;
 
 pub use agents::*;
 pub use app::*;
@@ -16,3 +17,4 @@ pub use changes::*;
 pub use doctor::*;
 pub use projects::*;
 pub use prompts::*;
+pub use resources::*;

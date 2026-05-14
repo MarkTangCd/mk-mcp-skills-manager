@@ -8,11 +8,18 @@ struct Migration {
     sql: &'static str,
 }
 
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "initial",
-    sql: include_str!("../../migrations/0001_initial.sql"),
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "initial",
+        sql: include_str!("../../migrations/0001_initial.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "resource_binding_metadata",
+        sql: include_str!("../../migrations/0002_resource_binding_metadata.sql"),
+    },
+];
 
 /// Apply pending migrations using SQLite's `user_version` pragma as the marker.
 pub fn run(conn: &Connection) -> DbResult<()> {

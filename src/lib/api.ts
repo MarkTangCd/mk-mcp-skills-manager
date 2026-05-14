@@ -10,7 +10,10 @@ import type {
   ChangeSet,
   DoctorIssue,
   Project,
+  ProjectMatrix,
   PromptTemplate,
+  ResourceRecord,
+  ResourceType,
   ScanSnapshot,
 } from '../types/domain';
 
@@ -96,6 +99,11 @@ export const api = {
     remove: (id: string) => call<void>('projects_remove', { id }),
     rescan: (id: string) => call<ProjectScanReport>('projects_rescan', { id }),
     latestScans: (id: string) => call<ScanSnapshot[]>('projects_latest_scans', { id }),
+    getMatrix: (id: string) => call<ProjectMatrix>('projects_get_matrix', { id }),
+  },
+  resources: {
+    list: (resourceType?: ResourceType) =>
+      call<ResourceRecord[]>('resources_list', { resourceType: resourceType ?? null }),
   },
   doctor: {
     listIssues: () => call<DoctorIssue[]>('doctor_list_issues'),

@@ -11,8 +11,8 @@ use tauri::Manager;
 
 use crate::commands::{
     agents_list, app_get_dashboard, backups_list, changes_list, doctor_list_issues, projects_add,
-    projects_get, projects_latest_scans, projects_list, projects_remove, projects_rescan,
-    prompts_list,
+    projects_get, projects_get_matrix, projects_latest_scans, projects_list, projects_remove,
+    projects_rescan, prompts_list, resources_list,
 };
 use crate::db::Database;
 use crate::services::AppDataService;
@@ -43,10 +43,12 @@ pub fn run() {
             projects_remove,
             projects_rescan,
             projects_latest_scans,
+            projects_get_matrix,
             doctor_list_issues,
             changes_list,
             backups_list,
             prompts_list,
+            resources_list,
             ping,
         ])
         .run(tauri::generate_context!())

@@ -1,5 +1,11 @@
-import PagePlaceholder from './PagePlaceholder';
+import ResourceListPage from '../components/ResourceListPage';
 
 export default function McpServersPage() {
-  return <PagePlaceholder title="MCP Servers" subtitle="Configured MCP servers" />;
+  return (
+    <ResourceListPage
+      title="MCP Servers"
+      subtitle="Read-only index of configured MCP servers."
+      resourceType="mcp"
+    />
+  );
 }
