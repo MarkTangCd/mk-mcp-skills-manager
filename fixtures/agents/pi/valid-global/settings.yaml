@@ -1,0 +1,19 @@
+resource_paths:
+  skills: /fixtures/pi/skills
+  prompts: /fixtures/pi/prompts
+extensions:
+  - id: fixture-extension
+    trusted: false
+    path: /fixtures/pi/extensions/fixture
+packages:
+  - id: fixture-package
+    version: 0.0.0
+themes:
+  - id: fixture-theme
+prompt_templates:
+  - slug: hello-prompt
+    title: Hello Prompt
+    body: "Hello {{name}}"
+skills:
+  - slug: hello-skill
+    path: /fixtures/pi/skills/hello

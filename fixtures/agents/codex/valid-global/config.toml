@@ -1,0 +1,16 @@
+[mcp_servers.fixture-fs]
+command = "echo"
+args = ["fixture-fs"]
+
+[mcp_servers.fixture-fs.env]
+FIXTURE_TOKEN = "${FAKE_TOKEN}"
+
+[[skills]]
+slug = "hello-skill"
+path = "skills/hello"
+description = "synthetic fixture skill"
+
+[[custom_agents]]
+slug = "reviewer"
+description = "fixture custom agent"
+tools = ["fixture-fs"]

@@ -1,3 +1,4 @@
+pub mod adapters;
 pub mod commands;
 pub mod db;
 pub mod domain;
@@ -9,7 +10,8 @@ pub mod state;
 use tauri::Manager;
 
 use crate::commands::{
-    agents_list, app_get_dashboard, backups_list, changes_list, doctor_list_issues, projects_list,
+    agents_list, app_get_dashboard, backups_list, changes_list, doctor_list_issues, projects_add,
+    projects_get, projects_latest_scans, projects_list, projects_remove, projects_rescan,
     prompts_list,
 };
 use crate::db::Database;
@@ -36,6 +38,11 @@ pub fn run() {
             app_get_dashboard,
             agents_list,
             projects_list,
+            projects_add,
+            projects_get,
+            projects_remove,
+            projects_rescan,
+            projects_latest_scans,
             doctor_list_issues,
             changes_list,
             backups_list,

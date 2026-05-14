@@ -175,3 +175,94 @@
   color: var(--color-danger, #d4665b);
   background: rgba(212, 102, 91, 0.08);
 }
+
+.projects__form {
+  display: grid;
+  grid-template-columns: 2fr 1fr auto;
+  gap: var(--space-3);
+  align-items: end;
+  margin-bottom: var(--space-4);
+}
+
+.projects__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.projects__field input {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.projects__form button {
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.projects__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.projects__table th,
+.projects__table td {
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+}
+
+.projects__table th {
+  color: var(--color-text-muted);
+  font-weight: 500;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.projects__path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.projects__remove {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.project-detail__actions {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.project-detail__actions button {
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.project-detail__back {
+  color: var(--color-text-muted);
+  font-size: 13px;
+}

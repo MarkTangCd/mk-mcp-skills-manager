@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import AppLayout from './layout/AppLayout';
 import DashboardPage from './pages/DashboardPage';
 import ProjectsPage from './pages/ProjectsPage';
+import ProjectDetailPage from './pages/ProjectDetailPage';
 import McpServersPage from './pages/McpServersPage';
 import SkillsPage from './pages/SkillsPage';
 import SubAgentsPage from './pages/SubAgentsPage';
@@ -18,6 +19,7 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/projects/:id" element={<ProjectDetailPage />} />
         <Route path="/mcp-servers" element={<McpServersPage />} />
         <Route path="/skills" element={<SkillsPage />} />
         <Route path="/sub-agents" element={<SubAgentsPage />} />

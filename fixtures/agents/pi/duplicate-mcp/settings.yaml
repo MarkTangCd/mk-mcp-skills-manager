@@ -1,0 +1,5 @@
+packages:
+  - id: fixture-package
+    version: 0.0.0
+  - id: fixture-package
+    version: 0.0.1

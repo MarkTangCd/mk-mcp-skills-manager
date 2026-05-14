@@ -1,0 +1,7 @@
+[mcp_servers.fixture-dup]
+command = "echo"
+args = ["first"]
+
+[mcp_servers."fixture-dup "]
+command = "echo"
+args = ["second-trailing-space"]

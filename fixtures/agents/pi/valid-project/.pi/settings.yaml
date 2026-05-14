@@ -1,0 +1,7 @@
+resource_paths:
+  skills: ./pi/skills
+extensions: []
+prompt_templates:
+  - slug: project-prompt
+    title: Project Prompt
+    body: "Project hello {{name}}"

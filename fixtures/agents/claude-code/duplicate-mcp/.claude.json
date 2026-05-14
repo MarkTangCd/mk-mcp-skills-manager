@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "fixture-dup": {
+      "command": "echo",
+      "args": ["first"],
+      "env": {}
+    },
+    "fixture-dup ": {
+      "command": "echo",
+      "args": ["second-trailing-space"],
+      "env": {}
+    }
+  }
+}

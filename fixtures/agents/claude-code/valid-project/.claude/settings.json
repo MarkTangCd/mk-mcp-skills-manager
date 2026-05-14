@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "fixture-project-mcp": {
+      "command": "echo",
+      "args": ["project"],
+      "env": {}
+    }
+  },
+  "agents": {
+    "project-reviewer": {
+      "description": "project-scoped fixture agent",
+      "tools": []
+    }
+  }
+}

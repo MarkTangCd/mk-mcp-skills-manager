@@ -106,7 +106,7 @@ pub struct ResourceBinding {
     pub enabled: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScanSummary {
     pub total_resources: u32,

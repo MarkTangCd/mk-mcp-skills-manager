@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/core';
 
 import type {
   Agent,
+  AgentKind,
   Backup,
   ChangeSet,
   DoctorIssue,
@@ -12,6 +13,16 @@ import type {
   PromptTemplate,
   ScanSnapshot,
 } from '../types/domain';
+
+export interface AdapterErrorEntry {
+  agentKind: AgentKind;
+  message: string;
+}
+
+export interface ProjectScanReport {
+  snapshots: ScanSnapshot[];
+  adapterErrors: AdapterErrorEntry[];
+}
 
 export interface CommandError {
   code: string;
@@ -79,6 +90,12 @@ export const api = {
   },
   projects: {
     list: () => call<Project[]>('projects_list'),
+    add: (path: string, name?: string) =>
+      call<Project>('projects_add', { path, name: name ?? null }),
+    get: (id: string) => call<Project>('projects_get', { id }),
+    remove: (id: string) => call<void>('projects_remove', { id }),
+    rescan: (id: string) => call<ProjectScanReport>('projects_rescan', { id }),
+    latestScans: (id: string) => call<ScanSnapshot[]>('projects_latest_scans', { id }),
   },
   doctor: {
     listIssues: () => call<DoctorIssue[]>('doctor_list_issues'),

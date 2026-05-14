@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "fixture-fs": {
+      "command": "echo",
+      "args": ["fixture-fs"],
+      "env": { "FIXTURE_TOKEN": "${FAKE_TOKEN}" }
+    }
+  },
+  "skills": {
+    "hello-skill": {
+      "path": "skills/hello",
+      "description": "synthetic fixture skill"
+    }
+  },
+  "agents": {
+    "reviewer": {
+      "description": "fixture reviewer sub-agent",
+      "tools": ["fixture-fs"]
+    }
+  }
+}

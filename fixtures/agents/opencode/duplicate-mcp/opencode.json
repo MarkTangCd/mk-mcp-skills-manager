@@ -1,0 +1,14 @@
+{
+  "mcp": {
+    "fixture-dup": {
+      "type": "local",
+      "command": ["echo", "first"],
+      "enabled": true
+    },
+    "fixture-dup ": {
+      "type": "local",
+      "command": ["echo", "second-trailing-space"],
+      "enabled": true
+    }
+  }
+}

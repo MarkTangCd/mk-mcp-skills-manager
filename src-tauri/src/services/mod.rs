@@ -2,5 +2,9 @@
 // is consumed by Tauri commands or other services.
 
 pub mod app_data;
+pub mod projects;
+pub mod scan;
 
 pub use app_data::{AppDataLayout, AppDataService};
+pub use projects::{ProjectError, ProjectService};
+pub use scan::{ScanError, ScanRunReport, ScanService};
