@@ -389,14 +389,25 @@ fn sha256_str(content: &str) -> String {
 }
 
 fn make_diff(old: &str, new: &str) -> String {
-    let mut lines = vec![];
-    for line in old.lines() {
-        lines.push(format!("-{line}"));
+    use similar::TextDiff;
+    let diff = TextDiff::from_lines(old, new);
+    let mut out = String::new();
+    for group in diff.grouped_ops(3) {
+        for op in group {
+            for change in diff.iter_changes(&op) {
+                let sign = match change.tag() {
+                    similar::ChangeTag::Delete => '-',
+                    similar::ChangeTag::Insert => '+',
+                    similar::ChangeTag::Equal => ' ',
+                };
+                out.push_str(&format!("{}{}", sign, change.value()));
+                if change.missing_newline() {
+                    out.push('\n');
+                }
+            }
+        }
     }
-    for line in new.lines() {
-        lines.push(format!("+{line}"));
-    }
-    lines.join("\n")
+    out
 }
 
 fn extract_name(payload: &JsonValue) -> AdapterResult<String> {
