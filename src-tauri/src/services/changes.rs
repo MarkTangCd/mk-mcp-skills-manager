@@ -228,6 +228,7 @@ impl ChangeService {
         &self,
         intent: &DomainIntent,
         registry: &AdapterRegistry,
+        ctx: &ScanContext,
     ) -> ChangeResult<ChangePlan> {
         let agent_kind = intent
             .agent_kind
@@ -262,8 +263,23 @@ impl ChangeService {
         };
 
         let draft = adapter
-            .build_change_plan(&adapter_intent)
+            .build_change_plan(ctx, &adapter_intent)
             .map_err(|e| ChangeError::Adapter(e.to_string()))?;
+
+        let mut files_changed = 0u32;
+        let mut additions = 0u32;
+        let mut deletions = 0u32;
+
+        for patch in &draft.patches {
+            files_changed += 1;
+            for line in patch.diff.lines() {
+                if line.starts_with('+') {
+                    additions += 1;
+                } else if line.starts_with('-') {
+                    deletions += 1;
+                }
+            }
+        }
 
         let plan = ChangePlan {
             id: Uuid::new_v4().to_string(),
@@ -276,11 +292,11 @@ impl ChangeService {
                 .map(|p| p.to_string_lossy().to_string())
                 .collect(),
             operations: draft.operations,
-            patches: vec![],
+            patches: draft.patches,
             diff_summary: DiffSummary {
-                files_changed: 0,
-                additions: 0,
-                deletions: 0,
+                files_changed,
+                additions,
+                deletions,
             },
             risks: draft.warnings,
             validation_errors: vec![],
@@ -775,6 +791,7 @@ mod tests {
 
             fn build_change_plan(
                 &self,
+                _ctx: &crate::adapters::ScanContext,
                 _intent: &crate::adapters::ChangeIntent,
             ) -> crate::adapters::AdapterResult<crate::adapters::ChangePlanDraft> {
                 Ok(crate::adapters::ChangePlanDraft {
@@ -785,6 +802,12 @@ mod tests {
                     }],
                     target_files: vec![std::path::PathBuf::from("mcp.json")],
                     warnings: vec!["demo warning".into()],
+                    patches: vec![FilePatch {
+                        path: "mcp.json".into(),
+                        before_hash: None,
+                        after_hash: None,
+                        diff: "-old\n+new".into(),
+                    }],
                 })
             }
         }
@@ -802,7 +825,8 @@ mod tests {
             created_at: Utc::now().to_rfc3339(),
         };
 
-        let plan = svc.create_plan_from_intent(&intent, &reg).unwrap();
+        let ctx = crate::adapters::ScanContext::empty();
+        let plan = svc.create_plan_from_intent(&intent, &reg, &ctx).unwrap();
         assert_eq!(plan.status, ChangeStatus::Draft);
         assert_eq!(plan.intent_id, "intent-1");
         assert_eq!(plan.agent_kind, Some(AgentKind::Codex));
@@ -810,10 +834,106 @@ mod tests {
         assert_eq!(plan.operations.len(), 1);
         assert_eq!(plan.risks, vec!["demo warning"]);
         assert!(plan.validation_errors.is_empty());
+        assert_eq!(plan.patches.len(), 1);
+        assert_eq!(plan.diff_summary.files_changed, 1);
+        assert_eq!(plan.diff_summary.additions, 1);
+        assert_eq!(plan.diff_summary.deletions, 1);
 
         // Should be persisted.
         let loaded = svc.get_plan(&plan.id).unwrap();
         assert_eq!(loaded.id, plan.id);
+    }
+
+    #[test]
+    fn create_plan_from_intent_computes_diff_summary_for_multiple_patches() {
+        let (_, svc) = svc();
+        let mut reg = crate::adapters::AdapterRegistry::new();
+
+        struct MultiPatchAdapter;
+
+        impl crate::adapters::AgentAdapter for MultiPatchAdapter {
+            fn kind(&self) -> AgentKind {
+                AgentKind::Codex
+            }
+
+            fn detect_installation(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<crate::adapters::DetectionResult> {
+                Ok(crate::adapters::DetectionResult {
+                    installed: true,
+                    version: None,
+                    notes: vec![],
+                })
+            }
+
+            fn locate_global_config(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>> {
+                Ok(None)
+            }
+
+            fn locate_project_config(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>> {
+                Ok(None)
+            }
+
+            fn scan(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<crate::adapters::ScanOutcome> {
+                Ok(crate::adapters::ScanOutcome::default())
+            }
+
+            fn build_change_plan(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+                _intent: &crate::adapters::ChangeIntent,
+            ) -> crate::adapters::AdapterResult<crate::adapters::ChangePlanDraft> {
+                Ok(crate::adapters::ChangePlanDraft {
+                    operations: vec![],
+                    target_files: vec![],
+                    warnings: vec![],
+                    patches: vec![
+                        FilePatch {
+                            path: "a.txt".into(),
+                            before_hash: None,
+                            after_hash: None,
+                            diff: "+line1\n+line2".into(),
+                        },
+                        FilePatch {
+                            path: "b.txt".into(),
+                            before_hash: None,
+                            after_hash: None,
+                            diff: "-removed".into(),
+                        },
+                    ],
+                })
+            }
+        }
+
+        reg.register(std::sync::Arc::new(MultiPatchAdapter));
+
+        let intent = DomainIntent {
+            id: "intent-multi".into(),
+            change_type: "createMcp".into(),
+            agent_kind: Some(AgentKind::Codex),
+            project_id: None,
+            scope_type: Some(ScopeType::Global),
+            resource_id: None,
+            payload: serde_json::json!({}),
+            created_at: Utc::now().to_rfc3339(),
+        };
+
+        let ctx = crate::adapters::ScanContext::empty();
+        let plan = svc.create_plan_from_intent(&intent, &reg, &ctx).unwrap();
+        assert_eq!(plan.diff_summary.files_changed, 2);
+        assert_eq!(plan.diff_summary.additions, 2);
+        assert_eq!(plan.diff_summary.deletions, 1);
+        assert_eq!(plan.patches.len(), 2);
     }
 
     #[test]
@@ -832,7 +952,8 @@ mod tests {
             created_at: Utc::now().to_rfc3339(),
         };
 
-        let err = svc.create_plan_from_intent(&intent, &reg).unwrap_err();
+        let ctx = crate::adapters::ScanContext::empty();
+        let err = svc.create_plan_from_intent(&intent, &reg, &ctx).unwrap_err();
         assert!(matches!(err, ChangeError::Adapter(_)));
     }
 
@@ -852,7 +973,8 @@ mod tests {
             created_at: Utc::now().to_rfc3339(),
         };
 
-        let err = svc.create_plan_from_intent(&intent, &reg).unwrap_err();
+        let ctx = crate::adapters::ScanContext::empty();
+        let err = svc.create_plan_from_intent(&intent, &reg, &ctx).unwrap_err();
         assert!(matches!(err, ChangeError::Adapter(_)));
     }
 }
