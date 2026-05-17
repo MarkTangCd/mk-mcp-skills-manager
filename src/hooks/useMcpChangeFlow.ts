@@ -70,18 +70,15 @@ export function useMcpChangeFlow(load: () => Promise<void>) {
     if (!plan) return;
     setActionError(null);
     try {
-      await api.changes.applyPlan(plan.id);
+      const result = await api.changes.applyPlan(plan.id, planProjectId);
       setPlan(null);
       setMode('list');
-      if (planProjectId) {
-        try {
-          await api.projects.rescan(planProjectId);
-        } catch {
-          // Best-effort rescan.
-        }
-      }
       setPlanProjectId(null);
       await load();
+      // Surface a warning if the backend rescan failed.
+      if (result.status === 'applied_with_warning') {
+        setActionError(new Error('Change applied, but rescan failed. The index may be out of sync until the next manual rescan.'));
+      }
     } catch (err) {
       setActionError(err as Error);
     }
