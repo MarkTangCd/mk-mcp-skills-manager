@@ -311,6 +311,18 @@ mod tests {
     }
 
     #[test]
+    fn empty_codex_fixture_returns_empty_scan() {
+        let adapter = CodexAdapter::new();
+        let out = adapter
+            .scan(&ScanContext::empty().with_fixture(fixture("empty")))
+            .unwrap();
+        assert_eq!(out.summary.total_resources, 0);
+        assert!(out.mcp_servers.is_empty());
+        assert!(out.skills.is_empty());
+        assert!(out.sub_agents.is_empty());
+    }
+
+    #[test]
     fn invalid_codex_fixture_returns_parse_error() {
         let adapter = CodexAdapter::new();
         let err = adapter
@@ -326,5 +338,6 @@ mod tests {
             .scan(&ScanContext::empty().with_fixture(fixture("duplicate-mcp")))
             .unwrap();
         assert_eq!(out.errors.len(), 1);
+        assert!(out.errors[0].contains("duplicate"));
     }
 }

@@ -313,6 +313,29 @@ mod tests {
     }
 
     #[test]
+    fn empty_claude_fixture_returns_empty_scan() {
+        let adapter = ClaudeCodeAdapter::new();
+        let out = adapter
+            .scan(&ScanContext::empty().with_fixture(fixture("empty")))
+            .unwrap();
+        assert_eq!(out.summary.total_resources, 0);
+        assert!(out.mcp_servers.is_empty());
+        assert!(out.skills.is_empty());
+        assert!(out.sub_agents.is_empty());
+    }
+
+    #[test]
+    fn duplicate_claude_fixture_returns_warning() {
+        let adapter = ClaudeCodeAdapter::new();
+        let out = adapter
+            .scan(&ScanContext::empty().with_fixture(fixture("duplicate-mcp")))
+            .unwrap();
+        assert_eq!(out.mcp_servers.len(), 2);
+        assert_eq!(out.errors.len(), 1);
+        assert!(out.errors[0].contains("duplicate"));
+    }
+
+    #[test]
     fn invalid_claude_fixture_returns_parse_error() {
         let adapter = ClaudeCodeAdapter::new();
         let err = adapter

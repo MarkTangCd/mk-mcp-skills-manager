@@ -367,6 +367,30 @@ mod tests {
     }
 
     #[test]
+    fn empty_pi_fixture_returns_empty_scan() {
+        let adapter = PiAdapter::new();
+        let out = adapter
+            .scan(&ScanContext::empty().with_fixture(fixture("empty")))
+            .unwrap();
+        assert_eq!(out.summary.total_resources, 0);
+        assert!(out.pi_resources.is_empty());
+        assert!(out.sub_agents.is_empty());
+    }
+
+    #[test]
+    fn duplicate_pi_package_fixture_parses_without_crash() {
+        let adapter = PiAdapter::new();
+        let out = adapter
+            .scan(&ScanContext::empty().with_fixture(fixture("duplicate-mcp")))
+            .unwrap();
+        assert_eq!(out.pi_resources.len(), 2);
+        assert!(out
+            .pi_resources
+            .iter()
+            .any(|r| r.resource_type == PiResourceKind::Package));
+    }
+
+    #[test]
     fn invalid_pi_fixture_returns_parse_error() {
         let adapter = PiAdapter::new();
         let err = adapter
