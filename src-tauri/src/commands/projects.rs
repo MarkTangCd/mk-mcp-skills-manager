@@ -35,7 +35,9 @@ pub fn projects_add(
     path: String,
     name: Option<String>,
 ) -> CommandResult<Project> {
-    Ok(state.projects.add(&path, name.as_deref())?)
+    let project = state.projects.add(&path, name.as_deref())?;
+    state.app_data.guard().allow(std::path::Path::new(&project.path));
+    Ok(project)
 }
 
 #[tauri::command]

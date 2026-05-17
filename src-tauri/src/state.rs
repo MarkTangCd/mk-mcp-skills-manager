@@ -22,6 +22,12 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(app_data: AppDataService, db: Database) -> Self {
+        // Allow writes to the user's home directory so adapters can modify
+        // global agent configs (e.g. ~/.claude.json, ~/.opencode.json).
+        if let Some(home) = crate::adapters::common::home_dir() {
+            app_data.guard().allow(&home);
+        }
+
         let db = Arc::new(db);
         let mut reg = AdapterRegistry::new();
         reg.register(Arc::new(ClaudeCodeAdapter::new()));

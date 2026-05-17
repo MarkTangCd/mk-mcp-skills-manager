@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 
 use thiserror::Error;
 
@@ -16,12 +17,21 @@ pub enum PathGuardError {
 
 /// Validates filesystem paths against an allowlist of base directories.
 ///
-/// In Phase 1 the only writes AgentHub Local performs are inside its own
-/// app-data directory. PathGuard ensures we never traverse outside that
-/// allowlist and that we never silently follow symlinks during writes.
-#[derive(Debug, Clone)]
+/// Adapters target files outside the app-data directory (e.g. user home for
+/// agent global configs, added project directories).  PathGuard supports
+/// runtime extension so the allowlist can be updated as projects are added
+/// and agent config locations are discovered.
+#[derive(Debug)]
 pub struct PathGuard {
-    allowed_roots: Vec<PathBuf>,
+    allowed_roots: RwLock<Vec<PathBuf>>,
+}
+
+impl Clone for PathGuard {
+    fn clone(&self) -> Self {
+        Self {
+            allowed_roots: RwLock::new(self.allowed_roots()),
+        }
+    }
 }
 
 impl PathGuard {
@@ -30,15 +40,23 @@ impl PathGuard {
             .into_iter()
             .map(|p| canonicalize_lossy(&p))
             .collect();
-        Self { allowed_roots }
+        Self {
+            allowed_roots: RwLock::new(allowed_roots),
+        }
     }
 
-    pub fn allow(&mut self, root: impl AsRef<Path>) {
-        self.allowed_roots.push(canonicalize_lossy(root.as_ref()));
+    /// Add a new root to the allowlist at runtime.  Duplicates are ignored.
+    pub fn allow(&self, root: impl AsRef<Path>) {
+        let path = canonicalize_lossy(root.as_ref());
+        let mut roots = self.allowed_roots.write().unwrap_or_else(|e| e.into_inner());
+        if !roots.iter().any(|r| r == &path) {
+            roots.push(path);
+        }
     }
 
-    pub fn allowed_roots(&self) -> &[PathBuf] {
-        &self.allowed_roots
+    pub fn allowed_roots(&self) -> Vec<PathBuf> {
+        let roots = self.allowed_roots.read().unwrap_or_else(|e| e.into_inner());
+        roots.clone()
     }
 
     /// Validate a path that may not yet exist (e.g. a future write target).
@@ -83,9 +101,8 @@ impl PathGuard {
     }
 
     fn is_within_allowed(&self, candidate: &Path) -> bool {
-        self.allowed_roots
-            .iter()
-            .any(|root| candidate.starts_with(root))
+        let roots = self.allowed_roots.read().unwrap_or_else(|e| e.into_inner());
+        roots.iter().any(|root| candidate.starts_with(root))
     }
 }
 
