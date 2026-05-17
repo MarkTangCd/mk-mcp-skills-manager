@@ -307,7 +307,9 @@ impl ClaudeCodeAdapter {
             }
         }
 
-        let new_content = serde_json::to_string_pretty(&config)
+        let payload = serde_json::to_value(&config)
+            .map_err(|err| AdapterError::Parse(err.to_string()))?;
+        let new_content = serde_json::to_string_pretty(&payload)
             .map_err(|err| AdapterError::Parse(err.to_string()))?;
         let after_hash = sha256_str(&new_content);
         let diff = make_diff(&existing_content, &new_content);
@@ -318,9 +320,6 @@ impl ClaudeCodeAdapter {
             after_hash: Some(after_hash),
             diff,
         };
-
-        let payload = serde_json::to_value(&config)
-            .map_err(|err| AdapterError::Parse(err.to_string()))?;
 
         Ok(ChangePlanDraft {
             operations: vec![ChangeOperation {

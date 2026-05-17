@@ -37,6 +37,13 @@ impl AppState {
         let registry = Arc::new(reg);
         let agents = AgentService::new(registry.clone());
         let projects = ProjectService::new(db.clone());
+        // Register all existing project paths with the path guard so that
+        // project-scoped changes can be applied after an app restart.
+        if let Ok(project_list) = projects.list() {
+            for project in project_list {
+                app_data.guard().allow(std::path::Path::new(&project.path));
+            }
+        }
         let resources = ResourceService::new(db.clone());
         let scans = ScanService::new(db.clone(), registry.clone());
         let doctor = DoctorService::new(db.clone(), resources.clone()).with_rules(vec![
