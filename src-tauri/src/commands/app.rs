@@ -23,8 +23,8 @@ pub struct BootstrapInfo {
     pub schema_version: u32,
 }
 
-/// Read-only Dashboard payload. Phase 1 returns an empty snapshot derived
-/// from real on-disk state so the frontend wiring is exercised end-to-end.
+/// Read-only Dashboard payload. Returns real on-disk state so the frontend
+/// wiring is exercised end-to-end.
 #[tauri::command]
 pub fn app_get_dashboard(state: State<'_, AppState>) -> CommandResult<DashboardSnapshot> {
     let layout = state.app_data.layout();
@@ -36,11 +36,15 @@ pub fn app_get_dashboard(state: State<'_, AppState>) -> CommandResult<DashboardS
         .scans
         .latest_snapshots(None)
         .map_err(|e| crate::error::CommandError::new("scan_error", e.to_string()))?;
+    let open_issues = state
+        .doctor
+        .list_issues(None, None, None)
+        .map_err(|e| crate::error::CommandError::new("doctor_error", e.to_string()))?;
 
     Ok(DashboardSnapshot {
         agents: state.agents.list(),
         recent_scans,
-        open_issues: vec![],
+        open_issues,
         recent_changes: vec![],
         bootstrap: BootstrapInfo {
             data_dir: layout.root.to_string_lossy().to_string(),

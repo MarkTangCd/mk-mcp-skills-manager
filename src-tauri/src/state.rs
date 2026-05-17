@@ -4,7 +4,7 @@ use crate::adapters::{
     AdapterRegistry, ClaudeCodeAdapter, CodexAdapter, OpencodeAdapter, PiAdapter,
 };
 use crate::db::Database;
-use crate::services::{AgentService, AppDataService, ProjectService, ResourceService, ScanService};
+use crate::services::{AgentService, AppDataService, DoctorService, ProjectService, ResourceService, ScanService};
 
 /// Application state shared across Tauri commands.
 #[derive(Clone)]
@@ -16,6 +16,7 @@ pub struct AppState {
     pub projects: ProjectService,
     pub resources: ResourceService,
     pub scans: ScanService,
+    pub doctor: DoctorService,
 }
 
 impl AppState {
@@ -31,6 +32,29 @@ impl AppState {
         let projects = ProjectService::new(db.clone());
         let resources = ResourceService::new(db.clone());
         let scans = ScanService::new(db.clone(), registry.clone());
+        let doctor = DoctorService::new(db.clone(), resources.clone()).with_rules(vec![
+            // MCP rules
+            Arc::new(crate::services::DuplicateMcpRule),
+            Arc::new(crate::services::MissingEnvRule),
+            Arc::new(crate::services::PlaintextSecretRule),
+            Arc::new(crate::services::DangerousCommandRule),
+            Arc::new(crate::services::DisabledButReferencedRule),
+            // Skill rules
+            Arc::new(crate::services::SkillMissingDescriptionRule),
+            Arc::new(crate::services::SkillMissingEntryRule),
+            Arc::new(crate::services::SkillBrokenPathRule),
+            Arc::new(crate::services::SkillUnusedRule),
+            // Sub-agent rules
+            Arc::new(crate::services::SubAgentNameConflictRule),
+            Arc::new(crate::services::SubAgentMissingMcpRule),
+            Arc::new(crate::services::SubAgentMissingSkillRule),
+            Arc::new(crate::services::SubAgentOverPermissionRule),
+            // Pi rules
+            Arc::new(crate::services::PiMissingPathRule),
+            Arc::new(crate::services::PiDuplicatePackageRule),
+            Arc::new(crate::services::PiUntrustedExtensionRule),
+            Arc::new(crate::services::PiProjectOverrideRule),
+        ]);
         Self {
             app_data,
             db,
@@ -39,6 +63,7 @@ impl AppState {
             projects,
             resources,
             scans,
+            doctor,
         }
     }
 }

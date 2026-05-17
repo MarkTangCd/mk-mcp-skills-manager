@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { ApiError, api, type DashboardSnapshot } from '../lib/api';
-import type { Agent } from '../types/domain';
+import type { Agent, DoctorIssue } from '../types/domain';
 
 // Module-level cache so navigating away and back re-uses the last snapshot
 // (revalidating in the background) instead of blocking on a fresh IPC round-trip.
@@ -68,7 +68,7 @@ export default function DashboardPage() {
           <section className="dashboard__grid">
             <Card label="Agents" value={snapshot.agents.length} />
             <Card label="Recent scans" value={snapshot.recentScans.length} />
-            <Card label="Open issues" value={snapshot.openIssues.length} />
+            <IssueCard issues={snapshot.openIssues} />
             <Card label="Recent changes" value={snapshot.recentChanges.length} />
           </section>
 
@@ -117,6 +117,35 @@ function Card({ label, value }: { label: string; value: number }) {
     <div className="dashboard__card">
       <div className="dashboard__card-label">{label}</div>
       <div className="dashboard__card-value">{value}</div>
+    </div>
+  );
+}
+
+function IssueCard({ issues }: { issues: DoctorIssue[] }) {
+  const critical = issues.filter((i) => i.severity === 'critical').length;
+  const warning = issues.filter((i) => i.severity === 'warning').length;
+  const info = issues.filter((i) => i.severity === 'info').length;
+  return (
+    <div className="dashboard__card">
+      <div className="dashboard__card-label">Open issues</div>
+      <div className="dashboard__card-value">{issues.length}</div>
+      <div className="dashboard__issue-breakdown">
+        {critical > 0 && (
+          <span className="dashboard__issue-dot dashboard__issue-dot--critical">
+            {critical} critical
+          </span>
+        )}
+        {warning > 0 && (
+          <span className="dashboard__issue-dot dashboard__issue-dot--warning">
+            {warning} warning
+          </span>
+        )}
+        {info > 0 && (
+          <span className="dashboard__issue-dot dashboard__issue-dot--info">
+            {info} info
+          </span>
+        )}
+      </div>
     </div>
   );
 }

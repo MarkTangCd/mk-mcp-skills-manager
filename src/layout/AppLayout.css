@@ -497,3 +497,158 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
 }
+
+/* Doctor page styles */
+.doctor__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.doctor__toolbar button {
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.doctor__toolbar button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.doctor__filters {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.doctor__filters select {
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.doctor__summary {
+  display: flex;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.doctor__summary-pill {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-elevated);
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: 13px;
+}
+
+.doctor__summary-pill--critical {
+  border-color: rgba(255, 93, 93, 0.45);
+  color: var(--color-danger);
+}
+
+.doctor__summary-pill--warning {
+  border-color: rgba(244, 185, 66, 0.45);
+  color: var(--color-warning);
+}
+
+.doctor__summary-pill--info {
+  border-color: rgba(79, 140, 255, 0.45);
+  color: var(--color-accent);
+}
+
+.doctor__table {
+  width: 100%;
+}
+
+.doctor__badge {
+  display: inline-flex;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.doctor__badge--critical {
+  border-color: rgba(255, 93, 93, 0.45);
+  color: var(--color-danger);
+}
+
+.doctor__badge--warning {
+  border-color: rgba(244, 185, 66, 0.45);
+  color: var(--color-warning);
+}
+
+.doctor__badge--info {
+  border-color: rgba(79, 140, 255, 0.45);
+  color: var(--color-accent);
+}
+
+.doctor__message {
+  max-width: 420px;
+  word-break: break-word;
+}
+
+.doctor__target {
+  font-size: 12px;
+}
+
+.doctor__target-line {
+  color: var(--color-text-muted);
+}
+
+.doctor__target-line--path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--color-text-dim);
+}
+
+.doctor__target-line--empty {
+  color: var(--color-text-dim);
+}
+
+.doctor__fixable {
+  color: var(--color-success);
+}
+
+.doctor__not-fixable {
+  color: var(--color-text-dim);
+}
+
+/* Dashboard issue card */
+.dashboard__issue-breakdown {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dashboard__issue-dot {
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dashboard__issue-dot--critical {
+  color: var(--color-danger);
+}
+
+.dashboard__issue-dot--warning {
+  color: var(--color-warning);
+}
+
+.dashboard__issue-dot--info {
+  color: var(--color-accent);
+}

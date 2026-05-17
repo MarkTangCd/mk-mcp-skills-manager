@@ -9,6 +9,7 @@ import type {
   Backup,
   ChangeSet,
   DoctorIssue,
+  IssueSeverity,
   Project,
   ProjectMatrix,
   PromptTemplate,
@@ -106,7 +107,18 @@ export const api = {
       call<ResourceRecord[]>('resources_list', { resourceType: resourceType ?? null }),
   },
   doctor: {
-    listIssues: () => call<DoctorIssue[]>('doctor_list_issues'),
+    listIssues: (severity?: IssueSeverity, category?: string, projectId?: string) =>
+      call<DoctorIssue[]>('doctor_list_issues', {
+        severity: severity ?? null,
+        category: category ?? null,
+        projectId: projectId ?? null,
+      }),
+    run: (projectId?: string) =>
+      call<{ issues: DoctorIssue[]; summary: { total: number; critical: number; warning: number; info: number } }>('doctor_run', { projectId: projectId ?? null }),
+    runAll: () =>
+      call<{ issues: DoctorIssue[]; summary: { total: number; critical: number; warning: number; info: number } }>('doctor_run_all'),
+    issueSummary: () =>
+      call<{ total: number; critical: number; warning: number; info: number }>('doctor_issue_summary'),
   },
   changes: {
     list: () => call<ChangeSet[]>('changes_list'),
