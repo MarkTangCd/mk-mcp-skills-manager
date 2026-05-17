@@ -7,6 +7,7 @@ import type {
   Agent,
   AgentKind,
   Backup,
+  ChangeIntent,
   ChangePlan,
   ChangeSet,
   ChangeStatus,
@@ -127,6 +128,10 @@ export const api = {
     getPlan: (id: string) => call<ChangePlan>('changes_get_plan', { id }),
     transition: (id: string, status: ChangeStatus) =>
       call<ChangePlan>('changes_transition', { id, status }),
+    createChangePlan: (intent: ChangeIntent) =>
+      call<ChangePlan>('changes_create_plan', { intent }),
+    applyPlan: (planId: string, projectId?: string | null) =>
+      call<ChangePlan>('changes_apply_plan', { planId, projectId: projectId ?? null }),
   },
   backups: {
     list: () => call<Backup[]>('backups_list'),

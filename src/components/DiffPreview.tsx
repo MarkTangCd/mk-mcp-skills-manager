@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ChangePlan } from '../types/domain';
 
 interface DiffPreviewProps {
@@ -9,8 +9,19 @@ interface DiffPreviewProps {
 
 export default function DiffPreview({ plan, onConfirm, onCancel }: DiffPreviewProps) {
   const [showConfirm, setShowConfirm] = useState(false);
+
+  // Reset confirmation gate whenever the plan identity or status changes.
+  useEffect(() => {
+    setShowConfirm(false);
+  }, [plan.id, plan.status]);
+
   const hasRisks = plan.risks.length > 0;
-  const canApply = plan.status === 'confirmed' && plan.validationErrors.length === 0;
+  const isPreviewed = plan.status === 'previewed';
+  const isConfirmed = plan.status === 'confirmed';
+  const canConfirm = isPreviewed && plan.validationErrors.length === 0;
+  const canApply = isConfirmed && plan.validationErrors.length === 0;
+  const actionLabel = isPreviewed ? 'Confirm' : 'Apply';
+  const canAction = canConfirm || canApply;
 
   return (
     <div className="diff-preview">
@@ -88,7 +99,7 @@ export default function DiffPreview({ plan, onConfirm, onCancel }: DiffPreviewPr
           <button
             type="button"
             className="diff-preview__btn diff-preview__btn--primary"
-            disabled={!canApply}
+            disabled={!canAction}
             onClick={() => {
               if (hasRisks && !showConfirm) {
                 setShowConfirm(true);
@@ -97,7 +108,7 @@ export default function DiffPreview({ plan, onConfirm, onCancel }: DiffPreviewPr
               onConfirm();
             }}
           >
-            {showConfirm ? 'Confirm Apply' : 'Apply'}
+            {showConfirm ? 'Confirm Apply' : actionLabel}
           </button>
         )}
       </div>

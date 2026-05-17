@@ -12,8 +12,8 @@ use serde_json::Value as JsonValue;
 use thiserror::Error;
 
 use crate::domain::{
-    AgentKind, ChangeOperation, DoctorIssue, McpServer, PiResource, ResourceType, ScanSummary,
-    ScopeType, Skill, SubAgent,
+    AgentKind, ChangeOperation, DoctorIssue, FilePatch, McpServer, PiResource, ResourceType,
+    ScanSummary, ScopeType, Skill, SubAgent,
 };
 
 #[derive(Debug, Error)]
@@ -108,12 +108,13 @@ pub struct ChangeIntent {
     pub payload: JsonValue,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangePlanDraft {
     pub operations: Vec<ChangeOperation>,
     pub target_files: Vec<PathBuf>,
     pub warnings: Vec<String>,
+    pub patches: Vec<FilePatch>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -145,7 +146,11 @@ pub trait AgentAdapter: Send + Sync {
 
     fn scan(&self, ctx: &ScanContext) -> AdapterResult<ScanOutcome>;
 
-    fn build_change_plan(&self, intent: &ChangeIntent) -> AdapterResult<ChangePlanDraft> {
+    fn build_change_plan(
+        &self,
+        _ctx: &ScanContext,
+        intent: &ChangeIntent,
+    ) -> AdapterResult<ChangePlanDraft> {
         Err(AdapterError::Unsupported(format!(
             "build_change_plan not implemented for {:?}",
             intent.resource_type

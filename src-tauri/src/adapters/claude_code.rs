@@ -2,57 +2,67 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::path::PathBuf;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
-use crate::domain::{AgentKind, McpServer, McpTransport, ScopeType, Skill, SubAgent};
+use crate::domain::{AgentKind, ChangeOperation, FilePatch, McpServer, McpTransport, ScopeType, Skill, SubAgent};
 
 use super::common::{
-    command_version, display_path, duplicate_name_warnings, env_ref_keys, first_existing, summary,
+    command_version, display_path, duplicate_name_warnings, env_ref_keys, first_existing, home_dir,
+    summary,
 };
 use super::traits::{
-    AdapterError, AdapterResult, AgentAdapter, DetectionResult, ScanContext, ScanOutcome,
-    ScopeLocation,
+    AdapterError, AdapterResult, AgentAdapter, ChangeIntent, ChangePlanDraft, DetectionResult,
+    ScanContext, ScanOutcome, ScopeLocation,
 };
 
 pub struct ClaudeCodeAdapter;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ClaudeConfig {
     #[serde(default, rename = "mcpServers")]
     mcp_servers: BTreeMap<String, ClaudeMcpConfig>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     skills: BTreeMap<String, ClaudeSkillConfig>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     agents: BTreeMap<String, ClaudeAgentConfig>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ClaudeMcpConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
     command: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     args: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     url: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     env: HashMap<String, String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     enabled: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ClaudeSkillConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct ClaudeAgentConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     role: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     tools: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     skills: Vec<String>,
 }
 
@@ -67,7 +77,9 @@ impl ClaudeCodeAdapter {
         }
 
         match scope_type {
-            ScopeType::Global => vec![],
+            ScopeType::Global => home_dir()
+                .map(|home| vec![home.join(".claude.json")])
+                .unwrap_or_default(),
             ScopeType::Project => ctx
                 .project_path
                 .as_ref()
@@ -199,6 +211,128 @@ impl ClaudeCodeAdapter {
             errors,
         }
     }
+
+    fn resolve_target_path(
+        &self,
+        ctx: &ScanContext,
+        scope_type: ScopeType,
+    ) -> AdapterResult<PathBuf> {
+        let candidates = self.config_candidates(ctx, scope_type);
+        if let Some(path) = first_existing(&candidates) {
+            return Ok(path);
+        }
+        candidates
+            .into_iter()
+            .next()
+            .ok_or_else(|| AdapterError::Invalid(format!("no config candidates for scope {scope_type:?}")))
+    }
+
+    fn build_change_plan_inner(
+        &self,
+        ctx: &ScanContext,
+        intent: &ChangeIntent,
+    ) -> AdapterResult<ChangePlanDraft> {
+        let target_path = self.resolve_target_path(ctx, intent.target_scope)?;
+
+        let (existing_content, before_hash) = if target_path.exists() {
+            let content = fs::read_to_string(&target_path)?;
+            let hash = sha256_str(&content);
+            (content, Some(hash))
+        } else {
+            ("{}".to_string(), None)
+        };
+
+        let mut config: ClaudeConfig = serde_json::from_str(&existing_content)
+            .map_err(|err| AdapterError::Parse(err.to_string()))?;
+
+        let mut warnings = Vec::new();
+
+        match intent.kind.as_str() {
+            "createMcp" => {
+                let name = extract_name(&intent.payload)?;
+                if config.mcp_servers.contains_key(&name) {
+                    warnings.push(format!(
+                        "MCP server '{}' already exists and will be overwritten",
+                        name
+                    ));
+                }
+                let mcp_config = parse_mcp_config(&intent.payload)?;
+                config.mcp_servers.insert(name, mcp_config);
+            }
+            "updateMcp" => {
+                let name = extract_name(&intent.payload)?;
+                let Some(mut existing) = config.mcp_servers.remove(&name) else {
+                    return Err(AdapterError::Invalid(format!(
+                        "MCP server '{}' not found",
+                        name
+                    )));
+                };
+                update_mcp_config(&intent.payload, &mut existing)?;
+                config.mcp_servers.insert(name, existing);
+            }
+            "deleteMcp" => {
+                let name = extract_name(&intent.payload)?;
+                if config.mcp_servers.remove(&name).is_none() {
+                    return Err(AdapterError::Invalid(format!(
+                        "MCP server '{}' not found",
+                        name
+                    )));
+                }
+            }
+            "enableMcp" => {
+                let name = extract_name(&intent.payload)?;
+                let Some(mcp) = config.mcp_servers.get_mut(&name) else {
+                    return Err(AdapterError::Invalid(format!(
+                        "MCP server '{}' not found",
+                        name
+                    )));
+                };
+                mcp.enabled = Some(true);
+            }
+            "disableMcp" => {
+                let name = extract_name(&intent.payload)?;
+                let Some(mcp) = config.mcp_servers.get_mut(&name) else {
+                    return Err(AdapterError::Invalid(format!(
+                        "MCP server '{}' not found",
+                        name
+                    )));
+                };
+                mcp.enabled = Some(false);
+            }
+            _ => {
+                return Err(AdapterError::Unsupported(format!(
+                    "unsupported change intent kind: {}",
+                    intent.kind
+                )));
+            }
+        }
+
+        let new_content = serde_json::to_string_pretty(&config)
+            .map_err(|err| AdapterError::Parse(err.to_string()))?;
+        let after_hash = sha256_str(&new_content);
+        let diff = make_diff(&existing_content, &new_content);
+
+        let patch = FilePatch {
+            path: target_path.to_string_lossy().to_string(),
+            before_hash,
+            after_hash: Some(after_hash),
+            diff,
+        };
+
+        let payload = serde_json::to_value(&config)
+            .map_err(|err| AdapterError::Parse(err.to_string()))?;
+
+        Ok(ChangePlanDraft {
+            operations: vec![ChangeOperation {
+                kind: "writeJson".to_string(),
+                target: target_path.to_string_lossy().to_string(),
+                payload,
+            }],
+            target_files: vec![target_path],
+            warnings,
+            patches: vec![patch],
+        })
+    }
 }
 
 impl Default for ClaudeCodeAdapter {
@@ -281,6 +415,14 @@ impl AgentAdapter for ClaudeCodeAdapter {
         }
         Ok(self.outcome(scopes, mcp_servers, skills, sub_agents, errors))
     }
+
+    fn build_change_plan(
+        &self,
+        ctx: &ScanContext,
+        intent: &ChangeIntent,
+    ) -> AdapterResult<ChangePlanDraft> {
+        self.build_change_plan_inner(ctx, intent)
+    }
 }
 
 fn scope_type_label(scope_type: ScopeType) -> &'static str {
@@ -290,9 +432,73 @@ fn scope_type_label(scope_type: ScopeType) -> &'static str {
     }
 }
 
+fn sha256_str(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn make_diff(old: &str, new: &str) -> String {
+    use similar::TextDiff;
+    let diff = TextDiff::from_lines(old, new);
+    let mut out = String::new();
+    for group in diff.grouped_ops(3) {
+        for op in group {
+            for change in diff.iter_changes(&op) {
+                let sign = match change.tag() {
+                    similar::ChangeTag::Delete => '-',
+                    similar::ChangeTag::Insert => '+',
+                    similar::ChangeTag::Equal => ' ',
+                };
+                out.push_str(&format!("{}{}", sign, change.value()));
+                if change.missing_newline() {
+                    out.push('\n');
+                }
+            }
+        }
+    }
+    out
+}
+
+fn extract_name(payload: &JsonValue) -> AdapterResult<String> {
+    payload
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| AdapterError::Invalid("payload missing 'name' field".to_string()))
+}
+
+fn parse_mcp_config(payload: &JsonValue) -> AdapterResult<ClaudeMcpConfig> {
+    serde_json::from_value(payload.clone())
+        .map_err(|err| AdapterError::Invalid(format!("invalid MCP config: {err}")))
+}
+
+fn update_mcp_config(payload: &JsonValue, existing: &mut ClaudeMcpConfig) -> AdapterResult<()> {
+    if let Some(cmd) = payload.get("command").and_then(|v| v.as_str()) {
+        existing.command = Some(cmd.to_string());
+    }
+    if let Some(args) = payload.get("args") {
+        existing.args = serde_json::from_value(args.clone())
+            .map_err(|err| AdapterError::Invalid(format!("invalid args: {err}")))?;
+    }
+    if let Some(url) = payload.get("url").and_then(|v| v.as_str()) {
+        existing.url = Some(url.to_string());
+    }
+    if let Some(env) = payload.get("env") {
+        existing.env = serde_json::from_value(env.clone())
+            .map_err(|err| AdapterError::Invalid(format!("invalid env: {err}")))?;
+    }
+    if let Some(enabled) = payload.get("enabled").and_then(|v| v.as_bool()) {
+        existing.enabled = Some(enabled);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     fn fixture(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -341,6 +547,219 @@ mod tests {
         let err = adapter
             .scan(&ScanContext::empty().with_fixture(fixture("invalid")))
             .unwrap_err();
+        assert!(matches!(err, AdapterError::Parse(_)));
+    }
+
+    // ------------------------------------------------------------------
+    // build_change_plan tests
+    // ------------------------------------------------------------------
+
+    fn intent(kind: &str, payload: JsonValue) -> ChangeIntent {
+        ChangeIntent {
+            kind: kind.to_string(),
+            resource_type: crate::domain::ResourceType::Mcp,
+            target_scope: ScopeType::Global,
+            project_id: None,
+            payload,
+        }
+    }
+
+    #[test]
+    fn create_mcp_on_empty_config() {
+        let dir = tempdir().unwrap();
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent(
+                    "createMcp",
+                    serde_json::json!({
+                        "name": "new-server",
+                        "command": "echo",
+                        "args": ["hello"],
+                        "enabled": true
+                    }),
+                ),
+            )
+            .unwrap();
+
+        assert_eq!(plan.operations.len(), 1);
+        assert_eq!(plan.operations[0].kind, "writeJson");
+        assert_eq!(plan.patches.len(), 1);
+        assert!(plan.patches[0].before_hash.is_none());
+        assert!(plan.patches[0].after_hash.is_some());
+        assert!(plan.patches[0].diff.contains("new-server"));
+        assert!(plan.warnings.is_empty());
+    }
+
+    #[test]
+    fn create_mcp_duplicate_warns() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{"mcpServers":{"dup":{"command":"echo","args":["hi"],"enabled":true}}}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent(
+                    "createMcp",
+                    serde_json::json!({
+                        "name": "dup",
+                        "command": "echo",
+                        "args": ["hello"],
+                        "enabled": true
+                    }),
+                ),
+            )
+            .unwrap();
+
+        assert_eq!(plan.warnings.len(), 1);
+        assert!(plan.warnings[0].contains("already exists"));
+    }
+
+    #[test]
+    fn update_mcp_changes_fields() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{"mcpServers":{"srv":{"command":"old","args":[],"enabled":false}}}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent(
+                    "updateMcp",
+                    serde_json::json!({
+                        "name": "srv",
+                        "command": "new",
+                        "args": ["arg1"],
+                        "enabled": true
+                    }),
+                ),
+            )
+            .unwrap();
+
+        let payload = &plan.operations[0].payload;
+        let mcp = payload.get("mcpServers").unwrap().get("srv").unwrap();
+        assert_eq!(mcp.get("command").unwrap().as_str().unwrap(), "new");
+        assert_eq!(mcp.get("args").unwrap().as_array().unwrap()[0], "arg1");
+        assert_eq!(mcp.get("enabled").unwrap().as_bool().unwrap(), true);
+    }
+
+    #[test]
+    fn delete_mcp_removes_entry() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{"mcpServers":{"keep":{"command":"echo","args":["keep"],"enabled":true},"remove":{"command":"echo","args":["remove"],"enabled":true}}}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("deleteMcp", serde_json::json!({"name": "remove"})),
+            )
+            .unwrap();
+
+        let payload = &plan.operations[0].payload;
+        let mcp_servers = payload.get("mcpServers").unwrap();
+        assert!(mcp_servers.get("remove").is_none());
+        assert!(mcp_servers.get("keep").is_some());
+    }
+
+    #[test]
+    fn enable_mcp_sets_enabled_true() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{"mcpServers":{"srv":{"command":"echo","args":["hi"],"enabled":false}}}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("enableMcp", serde_json::json!({"name": "srv"})),
+            )
+            .unwrap();
+
+        let payload = &plan.operations[0].payload;
+        let enabled = payload
+            .get("mcpServers")
+            .unwrap()
+            .get("srv")
+            .unwrap()
+            .get("enabled")
+            .unwrap()
+            .as_bool()
+            .unwrap();
+        assert!(enabled);
+    }
+
+    #[test]
+    fn disable_mcp_sets_enabled_false() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{"mcpServers":{"srv":{"command":"echo","args":["hi"],"enabled":true}}}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableMcp", serde_json::json!({"name": "srv"})),
+            )
+            .unwrap();
+
+        let payload = &plan.operations[0].payload;
+        let enabled = payload
+            .get("mcpServers")
+            .unwrap()
+            .get("srv")
+            .unwrap()
+            .get("enabled")
+            .unwrap()
+            .as_bool()
+            .unwrap();
+        assert!(!enabled);
+    }
+
+    #[test]
+    fn invalid_config_returns_recoverable_error() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{ "mcpServers": { "broken": "#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let err = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("createMcp", serde_json::json!({"name": "srv", "enabled": true})),
+            )
+            .unwrap_err();
+
         assert!(matches!(err, AdapterError::Parse(_)));
     }
 }

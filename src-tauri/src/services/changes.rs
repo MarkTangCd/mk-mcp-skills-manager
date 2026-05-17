@@ -11,11 +11,12 @@ use rusqlite::{params, OptionalExtension};
 use serde_json;
 use thiserror::Error;
 
-use crate::adapters::{AdapterRegistry, ScanContext};
+use crate::adapters::{AdapterRegistry, ScanContext, ChangeIntent as AdapterIntent};
 use crate::db::{Database, DbError};
-use crate::domain::{AgentKind, ChangeOperation, ChangePlan, ChangeSet, ChangeStatus};
+use crate::domain::{AgentKind, ChangeOperation, ChangePlan, ChangeSet, ChangeStatus, DiffSummary, ChangeIntent as DomainIntent, ResourceType, ScopeType};
 use crate::security::PathGuard;
 use crate::services::BackupService;
+use uuid::Uuid;
 
 #[derive(Debug, Error)]
 pub enum ChangeError {
@@ -31,6 +32,8 @@ pub enum ChangeError {
     BackupFailed(String),
     #[error("apply failed: {0}")]
     ApplyFailed(String),
+    #[error("adapter error: {0}")]
+    Adapter(String),
     #[error("db error: {0}")]
     Db(#[from] DbError),
     #[error("json error: {0}")]
@@ -209,6 +212,97 @@ impl ChangeService {
             from: plan.status,
             to,
         })?;
+
+        self.save_plan(&plan)?;
+        Ok(plan)
+    }
+
+    // ------------------------------------------------------------------
+    // Create plan from intent
+    // ------------------------------------------------------------------
+
+    /// Build a ChangePlan from a ChangeIntent by delegating to the
+    /// appropriate agent adapter.  The plan is persisted with status
+    /// `Draft` and returned so the UI can enter the preview flow.
+    pub fn create_plan_from_intent(
+        &self,
+        intent: &DomainIntent,
+        registry: &AdapterRegistry,
+        ctx: &ScanContext,
+    ) -> ChangeResult<ChangePlan> {
+        let agent_kind = intent
+            .agent_kind
+            .ok_or_else(|| ChangeError::Adapter("agent_kind is required".to_string()))?;
+
+        let adapter = registry
+            .get(agent_kind)
+            .ok_or_else(|| ChangeError::Adapter(format!("no adapter found for {:?}", agent_kind)))?;
+
+        let resource_type = match intent.change_type.as_str() {
+            "createMcp" | "updateMcp" | "deleteMcp" | "enableMcp" | "disableMcp" => {
+                ResourceType::Mcp
+            }
+            "createSkill" | "updateSkill" | "deleteSkill" | "enableSkill" | "disableSkill" => {
+                ResourceType::Skill
+            }
+            "createSubAgent" | "updateSubAgent" | "deleteSubAgent" => ResourceType::SubAgent,
+            _ => {
+                return Err(ChangeError::Adapter(format!(
+                    "unsupported change_type: {}",
+                    intent.change_type
+                )));
+            }
+        };
+
+        let adapter_intent = AdapterIntent {
+            kind: intent.change_type.clone(),
+            resource_type,
+            target_scope: intent.scope_type.unwrap_or(ScopeType::Global),
+            project_id: intent.project_id.clone(),
+            payload: intent.payload.clone(),
+        };
+
+        let draft = adapter
+            .build_change_plan(ctx, &adapter_intent)
+            .map_err(|e| ChangeError::Adapter(e.to_string()))?;
+
+        let mut files_changed = 0u32;
+        let mut additions = 0u32;
+        let mut deletions = 0u32;
+
+        for patch in &draft.patches {
+            files_changed += 1;
+            for line in patch.diff.lines() {
+                if line.starts_with('+') {
+                    additions += 1;
+                } else if line.starts_with('-') {
+                    deletions += 1;
+                }
+            }
+        }
+
+        let plan = ChangePlan {
+            id: Uuid::new_v4().to_string(),
+            intent_id: intent.id.clone(),
+            status: ChangeStatus::Draft,
+            agent_kind: Some(agent_kind),
+            target_files: draft
+                .target_files
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect(),
+            operations: draft.operations,
+            patches: draft.patches,
+            diff_summary: DiffSummary {
+                files_changed,
+                additions,
+                deletions,
+            },
+            risks: draft.warnings,
+            validation_errors: vec![],
+            created_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+        };
 
         self.save_plan(&plan)?;
         Ok(plan)
@@ -649,5 +743,238 @@ mod tests {
         // Plan should be marked as failed.
         let failed = svc.get_plan("p9").unwrap();
         assert_eq!(failed.status, ChangeStatus::Failed);
+    }
+
+    #[test]
+    fn create_plan_from_intent_builds_and_persists_plan() {
+        let (_, svc) = svc();
+        let mut reg = crate::adapters::AdapterRegistry::new();
+
+        struct TestAdapter;
+
+        impl crate::adapters::AgentAdapter for TestAdapter {
+            fn kind(&self) -> AgentKind {
+                AgentKind::Codex
+            }
+
+            fn detect_installation(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<crate::adapters::DetectionResult> {
+                Ok(crate::adapters::DetectionResult {
+                    installed: true,
+                    version: None,
+                    notes: vec![],
+                })
+            }
+
+            fn locate_global_config(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>> {
+                Ok(None)
+            }
+
+            fn locate_project_config(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>> {
+                Ok(None)
+            }
+
+            fn scan(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<crate::adapters::ScanOutcome> {
+                Ok(crate::adapters::ScanOutcome::default())
+            }
+
+            fn build_change_plan(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+                _intent: &crate::adapters::ChangeIntent,
+            ) -> crate::adapters::AdapterResult<crate::adapters::ChangePlanDraft> {
+                Ok(crate::adapters::ChangePlanDraft {
+                    operations: vec![ChangeOperation {
+                        kind: "writeJson".into(),
+                        target: "mcp.json".into(),
+                        payload: serde_json::json!({"name": "test"}),
+                    }],
+                    target_files: vec![std::path::PathBuf::from("mcp.json")],
+                    warnings: vec!["demo warning".into()],
+                    patches: vec![FilePatch {
+                        path: "mcp.json".into(),
+                        before_hash: None,
+                        after_hash: None,
+                        diff: "-old\n+new".into(),
+                    }],
+                })
+            }
+        }
+
+        reg.register(std::sync::Arc::new(TestAdapter));
+
+        let intent = DomainIntent {
+            id: "intent-1".into(),
+            change_type: "createMcp".into(),
+            agent_kind: Some(AgentKind::Codex),
+            project_id: None,
+            scope_type: Some(ScopeType::Global),
+            resource_id: None,
+            payload: serde_json::json!({"name": "test"}),
+            created_at: Utc::now().to_rfc3339(),
+        };
+
+        let ctx = crate::adapters::ScanContext::empty();
+        let plan = svc.create_plan_from_intent(&intent, &reg, &ctx).unwrap();
+        assert_eq!(plan.status, ChangeStatus::Draft);
+        assert_eq!(plan.intent_id, "intent-1");
+        assert_eq!(plan.agent_kind, Some(AgentKind::Codex));
+        assert_eq!(plan.target_files, vec!["mcp.json"]);
+        assert_eq!(plan.operations.len(), 1);
+        assert_eq!(plan.risks, vec!["demo warning"]);
+        assert!(plan.validation_errors.is_empty());
+        assert_eq!(plan.patches.len(), 1);
+        assert_eq!(plan.diff_summary.files_changed, 1);
+        assert_eq!(plan.diff_summary.additions, 1);
+        assert_eq!(plan.diff_summary.deletions, 1);
+
+        // Should be persisted.
+        let loaded = svc.get_plan(&plan.id).unwrap();
+        assert_eq!(loaded.id, plan.id);
+    }
+
+    #[test]
+    fn create_plan_from_intent_computes_diff_summary_for_multiple_patches() {
+        let (_, svc) = svc();
+        let mut reg = crate::adapters::AdapterRegistry::new();
+
+        struct MultiPatchAdapter;
+
+        impl crate::adapters::AgentAdapter for MultiPatchAdapter {
+            fn kind(&self) -> AgentKind {
+                AgentKind::Codex
+            }
+
+            fn detect_installation(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<crate::adapters::DetectionResult> {
+                Ok(crate::adapters::DetectionResult {
+                    installed: true,
+                    version: None,
+                    notes: vec![],
+                })
+            }
+
+            fn locate_global_config(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>> {
+                Ok(None)
+            }
+
+            fn locate_project_config(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>> {
+                Ok(None)
+            }
+
+            fn scan(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+            ) -> crate::adapters::AdapterResult<crate::adapters::ScanOutcome> {
+                Ok(crate::adapters::ScanOutcome::default())
+            }
+
+            fn build_change_plan(
+                &self,
+                _ctx: &crate::adapters::ScanContext,
+                _intent: &crate::adapters::ChangeIntent,
+            ) -> crate::adapters::AdapterResult<crate::adapters::ChangePlanDraft> {
+                Ok(crate::adapters::ChangePlanDraft {
+                    operations: vec![],
+                    target_files: vec![],
+                    warnings: vec![],
+                    patches: vec![
+                        FilePatch {
+                            path: "a.txt".into(),
+                            before_hash: None,
+                            after_hash: None,
+                            diff: "+line1\n+line2".into(),
+                        },
+                        FilePatch {
+                            path: "b.txt".into(),
+                            before_hash: None,
+                            after_hash: None,
+                            diff: "-removed".into(),
+                        },
+                    ],
+                })
+            }
+        }
+
+        reg.register(std::sync::Arc::new(MultiPatchAdapter));
+
+        let intent = DomainIntent {
+            id: "intent-multi".into(),
+            change_type: "createMcp".into(),
+            agent_kind: Some(AgentKind::Codex),
+            project_id: None,
+            scope_type: Some(ScopeType::Global),
+            resource_id: None,
+            payload: serde_json::json!({}),
+            created_at: Utc::now().to_rfc3339(),
+        };
+
+        let ctx = crate::adapters::ScanContext::empty();
+        let plan = svc.create_plan_from_intent(&intent, &reg, &ctx).unwrap();
+        assert_eq!(plan.diff_summary.files_changed, 2);
+        assert_eq!(plan.diff_summary.additions, 2);
+        assert_eq!(plan.diff_summary.deletions, 1);
+        assert_eq!(plan.patches.len(), 2);
+    }
+
+    #[test]
+    fn create_plan_from_intent_rejects_missing_agent_kind() {
+        let (_, svc) = svc();
+        let reg = crate::adapters::AdapterRegistry::new();
+
+        let intent = DomainIntent {
+            id: "intent-2".into(),
+            change_type: "createMcp".into(),
+            agent_kind: None,
+            project_id: None,
+            scope_type: Some(ScopeType::Global),
+            resource_id: None,
+            payload: serde_json::json!({}),
+            created_at: Utc::now().to_rfc3339(),
+        };
+
+        let ctx = crate::adapters::ScanContext::empty();
+        let err = svc.create_plan_from_intent(&intent, &reg, &ctx).unwrap_err();
+        assert!(matches!(err, ChangeError::Adapter(_)));
+    }
+
+    #[test]
+    fn create_plan_from_intent_rejects_missing_adapter() {
+        let (_, svc) = svc();
+        let reg = crate::adapters::AdapterRegistry::new();
+
+        let intent = DomainIntent {
+            id: "intent-3".into(),
+            change_type: "createMcp".into(),
+            agent_kind: Some(AgentKind::ClaudeCode),
+            project_id: None,
+            scope_type: Some(ScopeType::Global),
+            resource_id: None,
+            payload: serde_json::json!({}),
+            created_at: Utc::now().to_rfc3339(),
+        };
+
+        let ctx = crate::adapters::ScanContext::empty();
+        let err = svc.create_plan_from_intent(&intent, &reg, &ctx).unwrap_err();
+        assert!(matches!(err, ChangeError::Adapter(_)));
     }
 }

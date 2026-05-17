@@ -75,3 +75,35 @@ button {
   font-family: inherit;
   font-size: inherit;
 }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: var(--space-5);
+}
+
+.modal-content {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  max-width: 800px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.mcp-form__errors {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid rgba(255, 93, 93, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 93, 93, 0.06);
+  color: var(--color-danger);
+  font-size: 12px;
+}
