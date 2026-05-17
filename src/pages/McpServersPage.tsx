@@ -191,6 +191,13 @@ export default function McpServersPage() {
       {flow.mode === 'preview' && flow.plan && (
         <div className="modal-overlay">
           <div className="modal-content">
+            {flow.actionError && (
+              <div className="dashboard__error" role="alert" style={{ marginBottom: 'var(--space-3)' }}>
+                {(flow.actionError as ApiError).code
+                  ? `[${(flow.actionError as ApiError).code}] ${flow.actionError.message}`
+                  : flow.actionError.message}
+              </div>
+            )}
             <DiffPreview
               plan={flow.plan}
               onConfirm={

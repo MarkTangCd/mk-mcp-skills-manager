@@ -401,16 +401,21 @@ impl AgentAdapter for ClaudeCodeAdapter {
         let mut skills = Vec::new();
         let mut sub_agents = Vec::new();
         let mut errors = Vec::new();
-        if let Some(location) = self.locate_project_config(ctx)? {
-            match self.parse_config(&location.config_path, ScopeType::Project) {
-                Ok(outcome) => {
-                    scopes.extend(outcome.scopes);
-                    mcp_servers.extend(outcome.mcp_servers);
-                    skills.extend(outcome.skills);
-                    sub_agents.extend(outcome.sub_agents);
-                    errors.extend(outcome.errors);
+        for scope_type in [ScopeType::Global, ScopeType::Project] {
+            if let Some(location) = match scope_type {
+                ScopeType::Global => self.locate_global_config(ctx)?,
+                ScopeType::Project => self.locate_project_config(ctx)?,
+            } {
+                match self.parse_config(&location.config_path, scope_type) {
+                    Ok(outcome) => {
+                        scopes.extend(outcome.scopes);
+                        mcp_servers.extend(outcome.mcp_servers);
+                        skills.extend(outcome.skills);
+                        sub_agents.extend(outcome.sub_agents);
+                        errors.extend(outcome.errors);
+                    }
+                    Err(err) => errors.push(format!("{}: {err}", display_path(&location.config_path))),
                 }
-                Err(err) => errors.push(format!("{}: {err}", display_path(&location.config_path))),
             }
         }
         Ok(self.outcome(scopes, mcp_servers, skills, sub_agents, errors))
