@@ -81,6 +81,9 @@ impl From<crate::services::ChangeError> for CommandError {
             crate::services::ChangeError::ApplyFailed(msg) => {
                 CommandError::new("apply_failed", msg).with_target("change")
             }
+            crate::services::ChangeError::Adapter(msg) => {
+                CommandError::new("adapter_error", msg).with_target("change")
+            }
             _ => CommandError::new("change_error", err.to_string()),
         }
     }

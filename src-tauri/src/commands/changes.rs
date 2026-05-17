@@ -1,6 +1,6 @@
 use tauri::State;
 
-use crate::domain::{ChangePlan, ChangeSet, ChangeStatus};
+use crate::domain::{ChangeIntent, ChangePlan, ChangeSet, ChangeStatus};
 use crate::error::CommandResult;
 use crate::services::ChangeService;
 use crate::state::AppState;
@@ -27,6 +27,16 @@ pub fn changes_transition(
 ) -> CommandResult<ChangePlan> {
     let svc = ChangeService::new(state.db.clone());
     let plan = svc.transition(&id, status)?;
+    Ok(plan)
+}
+
+#[tauri::command]
+pub fn changes_create_plan(
+    state: State<'_, AppState>,
+    intent: ChangeIntent,
+) -> CommandResult<ChangePlan> {
+    let svc = ChangeService::new(state.db.clone());
+    let plan = svc.create_plan_from_intent(&intent, &state.registry)?;
     Ok(plan)
 }
 
