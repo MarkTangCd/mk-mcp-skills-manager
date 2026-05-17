@@ -130,7 +130,7 @@ export const api = {
       call<ChangePlan>('changes_transition', { id, status }),
     createChangePlan: (intent: ChangeIntent) =>
       call<ChangePlan>('changes_create_plan', { intent }),
-    applyPlan: (planId: string) => call<ChangePlan>('changes_apply', { id: planId }),
+    applyPlan: (planId: string) => call<ChangePlan>('changes_apply_plan', { planId }),
   },
   backups: {
     list: () => call<Backup[]>('backups_list'),

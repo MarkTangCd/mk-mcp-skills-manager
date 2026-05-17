@@ -11,10 +11,10 @@ use tauri::Manager;
 
 use crate::commands::{
     agents_list, app_get_dashboard, backups_list, backups_restore, changes_apply,
-    changes_create_plan, changes_get_plan, changes_list, changes_transition, doctor_issue_summary,
-    doctor_list_issues, doctor_run, doctor_run_all, projects_add, projects_get, projects_get_matrix,
-    projects_latest_scans, projects_list, projects_remove, projects_rescan, prompts_list,
-    resources_list,
+    changes_apply_plan, changes_create_plan, changes_get_plan, changes_list, changes_transition,
+    doctor_issue_summary, doctor_list_issues, doctor_run, doctor_run_all, projects_add,
+    projects_get, projects_get_matrix, projects_latest_scans, projects_list, projects_remove,
+    projects_rescan, prompts_list, resources_list,
 };
 use crate::db::Database;
 use crate::services::AppDataService;
@@ -55,6 +55,7 @@ pub fn run() {
             changes_transition,
             changes_create_plan,
             changes_apply,
+            changes_apply_plan,
             backups_list,
             backups_restore,
             prompts_list,

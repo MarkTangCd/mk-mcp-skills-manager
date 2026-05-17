@@ -41,13 +41,18 @@ pub fn changes_create_plan(
 }
 
 #[tauri::command]
-pub fn changes_apply(state: State<'_, AppState>, id: String) -> CommandResult<ChangePlan> {
+pub fn changes_apply_plan(state: State<'_, AppState>, plan_id: String) -> CommandResult<ChangePlan> {
     let svc = ChangeService::new(state.db.clone());
     let plan = svc.apply(
-        &id,
+        &plan_id,
         &state.backups,
         state.app_data.guard(),
         &state.registry,
     )?;
     Ok(plan)
+}
+
+#[tauri::command]
+pub fn changes_apply(state: State<'_, AppState>, id: String) -> CommandResult<ChangePlan> {
+    changes_apply_plan(state, id)
 }

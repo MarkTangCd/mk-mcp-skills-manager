@@ -245,7 +245,12 @@ impl ChangeService {
                 ResourceType::Skill
             }
             "createSubAgent" | "updateSubAgent" | "deleteSubAgent" => ResourceType::SubAgent,
-            _ => ResourceType::Mcp,
+            _ => {
+                return Err(ChangeError::Adapter(format!(
+                    "unsupported change_type: {}",
+                    intent.change_type
+                )));
+            }
         };
 
         let adapter_intent = AdapterIntent {
