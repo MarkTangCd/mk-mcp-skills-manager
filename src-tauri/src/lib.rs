@@ -10,8 +10,9 @@ pub mod state;
 use tauri::Manager;
 
 use crate::commands::{
-    agents_list, app_get_dashboard, backups_list, changes_list, doctor_issue_summary,
-    doctor_list_issues, doctor_run, doctor_run_all, projects_add, projects_get, projects_get_matrix,
+    agents_list, app_get_dashboard, backups_list, backups_restore, changes_apply,
+    changes_get_plan, changes_list, changes_transition, doctor_issue_summary, doctor_list_issues,
+    doctor_run, doctor_run_all, projects_add, projects_get, projects_get_matrix,
     projects_latest_scans, projects_list, projects_remove, projects_rescan, prompts_list,
     resources_list,
 };
@@ -50,7 +51,11 @@ pub fn run() {
             doctor_run_all,
             doctor_issue_summary,
             changes_list,
+            changes_get_plan,
+            changes_transition,
+            changes_apply,
             backups_list,
+            backups_restore,
             prompts_list,
             resources_list,
             ping,

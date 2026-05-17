@@ -60,6 +60,46 @@ impl From<crate::services::app_data::AppDataError> for CommandError {
     }
 }
 
+impl From<crate::services::ChangeError> for CommandError {
+    fn from(err: crate::services::ChangeError) -> Self {
+        match err {
+            crate::services::ChangeError::NotFound(id) => {
+                CommandError::new("change_not_found", id).with_target("change")
+            }
+            crate::services::ChangeError::InvalidTransition { from, to } => {
+                CommandError::new("invalid_transition", format!("{:?} -> {:?}", from, to))
+            }
+            crate::services::ChangeError::ValidationFailed => {
+                CommandError::new("validation_failed", err.to_string())
+            }
+            crate::services::ChangeError::PathNotAllowed(path) => {
+                CommandError::new("path_not_allowed", path).with_target("change")
+            }
+            crate::services::ChangeError::BackupFailed(msg) => {
+                CommandError::new("backup_failed", msg).with_target("change")
+            }
+            crate::services::ChangeError::ApplyFailed(msg) => {
+                CommandError::new("apply_failed", msg).with_target("change")
+            }
+            _ => CommandError::new("change_error", err.to_string()),
+        }
+    }
+}
+
+impl From<crate::services::BackupError> for CommandError {
+    fn from(err: crate::services::BackupError) -> Self {
+        match err {
+            crate::services::BackupError::NotFound(id) => {
+                CommandError::new("backup_not_found", id).with_target("backup")
+            }
+            crate::services::BackupError::TargetNotFound(path) => {
+                CommandError::new("backup_target_not_found", path).with_target("backup")
+            }
+            _ => CommandError::new("backup_error", err.to_string()),
+        }
+    }
+}
+
 impl From<std::io::Error> for CommandError {
     fn from(err: std::io::Error) -> Self {
         CommandError::new("io_error", err.to_string())

@@ -1,16 +1,17 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import AppLayout from './layout/AppLayout';
+import BackupsPage from './pages/BackupsPage';
+import ChangesPage from './pages/ChangesPage';
 import DashboardPage from './pages/DashboardPage';
-import ProjectsPage from './pages/ProjectsPage';
-import ProjectDetailPage from './pages/ProjectDetailPage';
+import DoctorPage from './pages/DoctorPage';
 import McpServersPage from './pages/McpServersPage';
+import PiResourcesPage from './pages/PiResourcesPage';
+import ProjectDetailPage from './pages/ProjectDetailPage';
+import ProjectsPage from './pages/ProjectsPage';
+import PromptsPage from './pages/PromptsPage';
+import SettingsPage from './pages/SettingsPage';
 import SkillsPage from './pages/SkillsPage';
 import SubAgentsPage from './pages/SubAgentsPage';
-import PiResourcesPage from './pages/PiResourcesPage';
-import PromptsPage from './pages/PromptsPage';
-import DoctorPage from './pages/DoctorPage';
-import BackupsPage from './pages/BackupsPage';
-import SettingsPage from './pages/SettingsPage';
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/pi-resources" element={<PiResourcesPage />} />
         <Route path="/prompts" element={<PromptsPage />} />
         <Route path="/doctor" element={<DoctorPage />} />
+        <Route path="/changes" element={<ChangesPage />} />
         <Route path="/backups" element={<BackupsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

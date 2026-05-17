@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: '/pi-resources', label: 'Pi Resources' },
   { to: '/prompts', label: 'Prompts' },
   { to: '/doctor', label: 'Doctor' },
+  { to: '/changes', label: 'Changes' },
   { to: '/backups', label: 'Backups' },
   { to: '/settings', label: 'Settings' },
 ] as const;

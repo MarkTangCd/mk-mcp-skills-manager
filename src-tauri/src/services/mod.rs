@@ -3,6 +3,9 @@
 
 pub mod agents;
 pub mod app_data;
+pub mod backup;
+pub mod changes;
+pub mod diff;
 pub mod doctor;
 pub mod doctor_rules;
 pub mod projects;
@@ -11,6 +14,9 @@ pub mod scan;
 
 pub use agents::AgentService;
 pub use app_data::{AppDataLayout, AppDataService};
+pub use backup::{BackupError, BackupManifest, BackupResult, BackupService};
+pub use changes::{ChangeError, ChangeResult, ChangeService};
+pub use diff::{DiffPreview, DiffPreviewSummary, DiffService, PatchPreview};
 pub use doctor::{DoctorError, DoctorResult, DoctorRule, DoctorService, IssueSummary, RawIssue, RuleContext};
 pub use doctor_rules::{
     DangerousCommandRule, DisabledButReferencedRule, DuplicateMcpRule, MissingEnvRule,

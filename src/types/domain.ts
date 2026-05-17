@@ -239,14 +239,47 @@ export interface ChangeOperation {
   payload: unknown;
 }
 
-export interface ChangeSet {
+export interface ChangeIntent {
   id: string;
+  changeType: string;
+  agentKind: AgentKind | null;
+  projectId: string | null;
+  scopeType: ScopeType | null;
+  resourceId: string | null;
+  payload: unknown;
+  createdAt: string;
+}
+
+export interface ChangePlan {
+  id: string;
+  intentId: string;
   status: ChangeStatus;
+  agentKind: AgentKind | null;
+  targetFiles: string[];
   operations: ChangeOperation[];
   patches: FilePatch[];
   diffSummary: DiffSummary;
-  backupId: string | null;
+  risks: string[];
+  validationErrors: string[];
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChangeSet {
+  id: string;
+  intentId: string | null;
+  status: ChangeStatus;
+  targetFiles: string[];
+  operations: ChangeOperation[];
+  patches: FilePatch[];
+  diffSummary: DiffSummary;
+  risks: string[];
+  validationErrors: string[];
+  backupId: string | null;
+  projectId: string | null;
+  agentKind: AgentKind | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Backup {

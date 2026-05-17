@@ -19,6 +19,11 @@ const MIGRATIONS: &[Migration] = &[
         name: "resource_binding_metadata",
         sql: include_str!("../../migrations/0002_resource_binding_metadata.sql"),
     },
+    Migration {
+        version: 3,
+        name: "change_sets_intent",
+        sql: include_str!("../../migrations/0003_change_sets_intent.sql"),
+    },
 ];
 
 /// Apply pending migrations using SQLite's `user_version` pragma as the marker.

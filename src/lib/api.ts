@@ -7,7 +7,9 @@ import type {
   Agent,
   AgentKind,
   Backup,
+  ChangePlan,
   ChangeSet,
+  ChangeStatus,
   DoctorIssue,
   IssueSeverity,
   Project,
@@ -122,9 +124,13 @@ export const api = {
   },
   changes: {
     list: () => call<ChangeSet[]>('changes_list'),
+    getPlan: (id: string) => call<ChangePlan>('changes_get_plan', { id }),
+    transition: (id: string, status: ChangeStatus) =>
+      call<ChangePlan>('changes_transition', { id, status }),
   },
   backups: {
     list: () => call<Backup[]>('backups_list'),
+    restore: (id: string) => call<Backup>('backups_restore', { id }),
   },
   prompts: {
     list: () => call<PromptTemplate[]>('prompts_list'),

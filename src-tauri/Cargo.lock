@@ -13,11 +13,13 @@ name = "agenthub-local"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "hex",
  "parking_lot",
  "rusqlite",
  "serde",
  "serde_json",
  "serde_yaml",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",

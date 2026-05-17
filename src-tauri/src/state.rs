@@ -4,7 +4,7 @@ use crate::adapters::{
     AdapterRegistry, ClaudeCodeAdapter, CodexAdapter, OpencodeAdapter, PiAdapter,
 };
 use crate::db::Database;
-use crate::services::{AgentService, AppDataService, DoctorService, ProjectService, ResourceService, ScanService};
+use crate::services::{AgentService, AppDataService, BackupService, DoctorService, ProjectService, ResourceService, ScanService};
 
 /// Application state shared across Tauri commands.
 #[derive(Clone)]
@@ -17,6 +17,7 @@ pub struct AppState {
     pub resources: ResourceService,
     pub scans: ScanService,
     pub doctor: DoctorService,
+    pub backups: BackupService,
 }
 
 impl AppState {
@@ -55,6 +56,7 @@ impl AppState {
             Arc::new(crate::services::PiUntrustedExtensionRule),
             Arc::new(crate::services::PiProjectOverrideRule),
         ]);
+        let backups = BackupService::new(db.clone(), &app_data);
         Self {
             app_data,
             db,
@@ -64,6 +66,7 @@ impl AppState {
             resources,
             scans,
             doctor,
+            backups,
         }
     }
 }

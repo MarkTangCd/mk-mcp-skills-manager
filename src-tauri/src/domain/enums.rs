@@ -76,6 +76,20 @@ pub enum ChangeStatus {
     Restored,
 }
 
+impl ChangeStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ChangeStatus::Draft => "draft",
+            ChangeStatus::Previewed => "previewed",
+            ChangeStatus::Confirmed => "confirmed",
+            ChangeStatus::Applied => "applied",
+            ChangeStatus::AppliedWithWarning => "applied_with_warning",
+            ChangeStatus::Failed => "failed",
+            ChangeStatus::Restored => "restored",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum McpTransport {
