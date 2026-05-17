@@ -3,16 +3,34 @@ import { useEffect, useState } from 'react';
 import { ApiError, api, type DashboardSnapshot } from '../lib/api';
 import type { Agent } from '../types/domain';
 
+// Module-level cache so navigating away and back re-uses the last snapshot
+// (revalidating in the background) instead of blocking on a fresh IPC round-trip.
+let cachedSnapshot: DashboardSnapshot | null = null;
+let inFlight: Promise<DashboardSnapshot> | null = null;
+
+function fetchDashboard(): Promise<DashboardSnapshot> {
+  if (inFlight) return inFlight;
+  inFlight = api.app
+    .getDashboard()
+    .then((value) => {
+      cachedSnapshot = value;
+      return value;
+    })
+    .finally(() => {
+      inFlight = null;
+    });
+  return inFlight;
+}
+
 export default function DashboardPage() {
-  const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(null);
+  const [snapshot, setSnapshot] = useState<DashboardSnapshot | null>(cachedSnapshot);
   const [error, setError] = useState<ApiError | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(cachedSnapshot === null);
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    api.app
-      .getDashboard()
+    if (cachedSnapshot === null) setLoading(true);
+    fetchDashboard()
       .then((value) => {
         if (cancelled) return;
         setSnapshot(value);
