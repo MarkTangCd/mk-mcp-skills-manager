@@ -13,6 +13,10 @@ import type {
   ChangeStatus,
   DoctorIssue,
   IssueSeverity,
+  LibraryEntry,
+  LibraryEntryDetail,
+  LibraryKind,
+  LibraryMetadata,
   Project,
   ProjectMatrix,
   PromptTemplate,
@@ -139,5 +143,43 @@ export const api = {
   },
   prompts: {
     list: () => call<PromptTemplate[]>('prompts_list'),
+  },
+  library: {
+    list: (kind: LibraryKind) => call<LibraryEntry[]>('library_list', { kind }),
+    create: (kind: LibraryKind, slug: string, metadata: Partial<LibraryMetadata>) =>
+      call<LibraryEntry>('library_create', { kind, slug, metadata }),
+    get: (kind: LibraryKind, slug: string) =>
+      call<LibraryEntryDetail>('library_get', { kind, slug }),
+    update: (kind: LibraryKind, slug: string, metadata: Partial<LibraryMetadata>) =>
+      call<LibraryEntry>('library_update', { kind, slug, metadata }),
+    delete: (kind: LibraryKind, slug: string) =>
+      call<void>('library_delete', { kind, slug }),
+  },
+  skills: {
+    list: (search?: string, tags?: string[]) =>
+      call<LibraryEntry[]>('skills_list', { search: search ?? null, tags: tags ?? null }),
+    create: (slug: string, title: string, description: string, tags: string[], entryFile?: string) =>
+      call<LibraryEntry>('skills_create', { slug, title, description, tags, entryFile: entryFile ?? null }),
+    import: (sourcePath: string, slug?: string) =>
+      call<LibraryEntry>('skills_import', { sourcePath, slug: slug ?? null }),
+    get: (slug: string) => call<LibraryEntryDetail>('skills_get', { slug }),
+    update: (slug: string, metadata: Partial<LibraryMetadata>) =>
+      call<LibraryEntry>('skills_update', { slug, metadata }),
+    delete: (slug: string) => call<void>('skills_delete', { slug }),
+    enable: (intent: ChangeIntent) => call<ChangePlan>('skills_enable', { intent }),
+    disable: (intent: ChangeIntent) => call<ChangePlan>('skills_disable', { intent }),
+  },
+  subAgents: {
+    list: (search?: string, tags?: string[]) =>
+      call<LibraryEntry[]>('sub_agents_list', { search: search ?? null, tags: tags ?? null }),
+    create: (slug: string, metadata: Partial<LibraryMetadata>) =>
+      call<LibraryEntry>('sub_agents_create', { slug, metadata }),
+    get: (slug: string) => call<LibraryEntryDetail>('sub_agents_get', { slug }),
+    update: (slug: string, metadata: Partial<LibraryMetadata>) =>
+      call<LibraryEntry>('sub_agents_update', { slug, metadata }),
+    delete: (slug: string) => call<void>('sub_agents_delete', { slug }),
+    templates: () => call<LibraryEntry[]>('sub_agent_templates'),
+    enable: (intent: ChangeIntent) => call<ChangePlan>('sub_agents_enable', { intent }),
+    disable: (intent: ChangeIntent) => call<ChangePlan>('sub_agents_disable', { intent }),
   },
 };

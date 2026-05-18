@@ -37,7 +37,7 @@ pub fn changes_create_plan(
     intent: ChangeIntent,
 ) -> CommandResult<ChangePlan> {
     let svc = ChangeService::new(state.db.clone());
-    let ctx = if let Some(ref project_id) = intent.project_id {
+    let mut ctx = if let Some(ref project_id) = intent.project_id {
         match state.projects.get(project_id) {
             Ok(project) => ScanContext::for_project(project.path.into()),
             Err(_) => ScanContext::empty(),
@@ -45,6 +45,7 @@ pub fn changes_create_plan(
     } else {
         ScanContext::empty()
     };
+    ctx = ctx.with_app_data(state.app_data.layout().root.clone());
     let plan = svc.create_plan_from_intent(&intent, &state.registry, &ctx)?;
     Ok(plan)
 }

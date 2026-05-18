@@ -2,69 +2,83 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
-use crate::domain::{AgentKind, PiResource, PiResourceKind, ScopeType};
+use crate::domain::{AgentKind, ChangeOperation, FilePatch, PiResource, PiResourceKind, ScopeType};
 
 use super::common::{command_version, first_existing, home_dir, summary};
 use super::traits::{
-    AdapterError, AdapterResult, AgentAdapter, DetectionResult, ScanContext, ScanOutcome,
-    ScopeLocation,
+    AdapterError, AdapterResult, AgentAdapter, ChangeIntent, ChangePlanDraft, DetectionResult,
+    ScanContext, ScanOutcome, ScopeLocation,
 };
 
 pub struct PiAdapter;
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 struct PiSettings {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     resource_paths: BTreeMap<String, String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     skills: Vec<PiSkillConfig>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     prompt_templates: Vec<PiPromptConfig>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     extensions: Vec<PiExtensionConfig>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     packages: Vec<PiPackageConfig>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     themes: Vec<PiThemeConfig>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct PiSkillConfig {
     slug: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     enabled: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct PiPromptConfig {
     slug: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     body: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     enabled: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct PiExtensionConfig {
     id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     trusted: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     enabled: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct PiPackageConfig {
     id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     enabled: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct PiThemeConfig {
     id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     enabled: Option<bool>,
 }
 
@@ -246,6 +260,156 @@ impl PiAdapter {
             errors,
         }
     }
+
+    fn resolve_target_path(
+        &self,
+        ctx: &ScanContext,
+        scope_type: ScopeType,
+    ) -> AdapterResult<PathBuf> {
+        let candidates = self.config_candidates(ctx, scope_type);
+        if let Some(path) = first_existing(&candidates) {
+            return Ok(path);
+        }
+        candidates
+            .into_iter()
+            .next()
+            .ok_or_else(|| AdapterError::Invalid(format!("no config candidates for scope {scope_type:?}")))
+    }
+
+    fn build_change_plan_inner(
+        &self,
+        ctx: &ScanContext,
+        intent: &ChangeIntent,
+    ) -> AdapterResult<ChangePlanDraft> {
+        let target_path = self.resolve_target_path(ctx, intent.target_scope)?;
+
+        let (existing_content, before_hash) = if target_path.exists() {
+            let content = fs::read_to_string(&target_path)?;
+            let hash = sha256_str(&content);
+            (content, Some(hash))
+        } else {
+            ("".to_string(), None)
+        };
+
+        let mut settings: PiSettings = if existing_content.trim().is_empty() {
+            PiSettings::default()
+        } else {
+            serde_yaml::from_str(&existing_content)
+                .map_err(|err| AdapterError::Parse(err.to_string()))?
+        };
+
+        let mut warnings = Vec::new();
+
+        match intent.kind.as_str() {
+            "enableSkill" => {
+                let library_path = ctx
+                    .app_data_path
+                    .as_ref()
+                    .map(|p| p.join("library").join("skills").to_string_lossy().to_string())
+                    .or_else(|| {
+                        intent.payload.get("libraryPath").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    })
+                    .ok_or_else(|| AdapterError::Invalid(
+                        "app_data_path or libraryPath required for Pi enableSkill".to_string()
+                    ))?;
+
+                if settings.resource_paths.contains_key("skills") {
+                    warnings.push(
+                        "resource_paths.skills already exists and will be overwritten".to_string()
+                    );
+                }
+                settings.resource_paths.insert("skills".to_string(), library_path);
+            }
+            "disableSkill" | "deleteSkill" => {
+                let library_path = ctx
+                    .app_data_path
+                    .as_ref()
+                    .map(|p| p.join("library").join("skills").to_string_lossy().to_string());
+
+                if let Some(current) = settings.resource_paths.get("skills") {
+                    if let Some(ref expected) = library_path {
+                        if current == expected {
+                            settings.resource_paths.remove("skills");
+                        } else {
+                            warnings.push(format!(
+                                "resource_paths.skills points to '{}' which is not the AgentHub library; leaving unchanged",
+                                current
+                            ));
+                        }
+                    } else {
+                        settings.resource_paths.remove("skills");
+                    }
+                } else {
+                    return Err(AdapterError::Invalid(
+                        "resource_paths.skills not found".to_string()
+                    ));
+                }
+            }
+            "enableSubAgent" | "disableSubAgent" | "deleteSubAgent" => {
+                return Err(AdapterError::Unsupported(
+                    "Pi does not support sub-agents".to_string()
+                ));
+            }
+            _ => {
+                return Err(AdapterError::Unsupported(format!(
+                    "unsupported change intent kind: {}",
+                    intent.kind
+                )));
+            }
+        }
+
+        let new_content = serde_yaml::to_string(&settings)
+            .map_err(|err| AdapterError::Parse(err.to_string()))?;
+        let after_hash = sha256_str(&new_content);
+        let diff = make_diff(&existing_content, &new_content);
+
+        let patch = FilePatch {
+            path: target_path.to_string_lossy().to_string(),
+            before_hash,
+            after_hash: Some(after_hash),
+            diff,
+        };
+
+        Ok(ChangePlanDraft {
+            operations: vec![ChangeOperation {
+                kind: "writeText".to_string(),
+                target: target_path.to_string_lossy().to_string(),
+                payload: JsonValue::String(new_content),
+            }],
+            target_files: vec![target_path],
+            warnings,
+            patches: vec![patch],
+        })
+    }
+}
+
+fn sha256_str(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn make_diff(old: &str, new: &str) -> String {
+    use similar::TextDiff;
+    let diff = TextDiff::from_lines(old, new);
+    let mut out = String::new();
+    for group in diff.grouped_ops(3) {
+        for op in group {
+            for change in diff.iter_changes(&op) {
+                let sign = match change.tag() {
+                    similar::ChangeTag::Delete => '-',
+                    similar::ChangeTag::Insert => '+',
+                    similar::ChangeTag::Equal => ' ',
+                };
+                out.push_str(&format!("{}{}", sign, change.value()));
+                if change.missing_newline() {
+                    out.push('\n');
+                }
+            }
+        }
+    }
+    out
 }
 
 impl Default for PiAdapter {
@@ -331,6 +495,14 @@ impl AgentAdapter for PiAdapter {
         }
         Ok(self.outcome(scopes, resources, errors))
     }
+
+    fn build_change_plan(
+        &self,
+        ctx: &ScanContext,
+        intent: &ChangeIntent,
+    ) -> AdapterResult<ChangePlanDraft> {
+        self.build_change_plan_inner(ctx, intent)
+    }
 }
 
 fn scope_type_label(scope_type: ScopeType) -> &'static str {
@@ -343,6 +515,7 @@ fn scope_type_label(scope_type: ScopeType) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     fn fixture(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -409,5 +582,169 @@ mod tests {
             .errors
             .iter()
             .any(|warning| warning.contains("does not exist")));
+    }
+
+    // ------------------------------------------------------------------
+    // build_change_plan tests
+    // ------------------------------------------------------------------
+
+    fn intent(kind: &str, payload: JsonValue) -> ChangeIntent {
+        ChangeIntent {
+            kind: kind.to_string(),
+            resource_type: crate::domain::ResourceType::Skill,
+            target_scope: ScopeType::Global,
+            project_id: None,
+            payload,
+        }
+    }
+
+    #[test]
+    fn enable_skill_sets_resource_paths_skills() {
+        let dir = tempdir().unwrap();
+        let adapter = PiAdapter::new();
+        let ctx = ScanContext::empty()
+            .with_fixture(dir.path().to_path_buf())
+            .with_app_data("/agenthub".into());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("enableSkill", serde_json::json!({})),
+            )
+            .unwrap();
+
+        assert_eq!(plan.operations.len(), 1);
+        assert_eq!(plan.operations[0].kind, "writeText");
+        assert_eq!(plan.patches.len(), 1);
+        assert!(plan.patches[0].before_hash.is_none());
+        assert!(plan.patches[0].after_hash.is_some());
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(content.contains("resource_paths"));
+        assert!(content.contains("skills"));
+        assert!(content.contains("/agenthub/library/skills"));
+    }
+
+    #[test]
+    fn enable_skill_overwrite_warns() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("settings.yaml"),
+            "resource_paths:\n  skills: /old/path\n",
+        )
+        .unwrap();
+
+        let adapter = PiAdapter::new();
+        let ctx = ScanContext::empty()
+            .with_fixture(dir.path().to_path_buf())
+            .with_app_data("/agenthub".into());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("enableSkill", serde_json::json!({})),
+            )
+            .unwrap();
+
+        assert_eq!(plan.warnings.len(), 1);
+        assert!(plan.warnings[0].contains("already exists"));
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(content.contains("/agenthub/library/skills"));
+        assert!(!content.contains("/old/path"));
+    }
+
+    #[test]
+    fn disable_skill_removes_library_path() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("settings.yaml"),
+            "resource_paths:\n  skills: /agenthub/library/skills\n  other: /other\n",
+        )
+        .unwrap();
+
+        let adapter = PiAdapter::new();
+        let ctx = ScanContext::empty()
+            .with_fixture(dir.path().to_path_buf())
+            .with_app_data("/agenthub".into());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableSkill", serde_json::json!({})),
+            )
+            .unwrap();
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(!content.contains("/agenthub/library/skills"));
+        assert!(content.contains("/other"));
+    }
+
+    #[test]
+    fn disable_skill_non_library_warns() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("settings.yaml"),
+            "resource_paths:\n  skills: /custom/skills\n",
+        )
+        .unwrap();
+
+        let adapter = PiAdapter::new();
+        let ctx = ScanContext::empty()
+            .with_fixture(dir.path().to_path_buf())
+            .with_app_data("/agenthub".into());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableSkill", serde_json::json!({})),
+            )
+            .unwrap();
+
+        assert_eq!(plan.warnings.len(), 1);
+        assert!(plan.warnings[0].contains("not the AgentHub library"));
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(content.contains("/custom/skills"));
+    }
+
+    #[test]
+    fn disable_missing_skill_returns_error() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("settings.yaml"), "resource_paths:\n  other: /other\n").unwrap();
+
+        let adapter = PiAdapter::new();
+        let ctx = ScanContext::empty()
+            .with_fixture(dir.path().to_path_buf())
+            .with_app_data("/agenthub".into());
+        let err = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableSkill", serde_json::json!({})),
+            )
+            .unwrap_err();
+
+        assert!(matches!(err, AdapterError::Invalid(_)));
+        assert!(err.to_string().contains("not found"));
+    }
+
+    #[test]
+    fn delete_skill_removes_library_path() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("settings.yaml"),
+            "resource_paths:\n  skills: /agenthub/library/skills\n",
+        )
+        .unwrap();
+
+        let adapter = PiAdapter::new();
+        let ctx = ScanContext::empty()
+            .with_fixture(dir.path().to_path_buf())
+            .with_app_data("/agenthub".into());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("deleteSkill", serde_json::json!({})),
+            )
+            .unwrap();
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(!content.contains("skills"));
     }
 }

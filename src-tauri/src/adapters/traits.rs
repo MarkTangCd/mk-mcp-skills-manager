@@ -57,6 +57,9 @@ pub struct ScanContext {
     /// When set, adapters MUST use this root instead of the real user
     /// home / OS-level locations. Used by fixtures and tests.
     pub fixture_root: Option<PathBuf>,
+    /// Path to the AgentHub app-data directory. Used by adapters that
+    /// need to reference internal library paths (e.g. Pi skill paths).
+    pub app_data_path: Option<PathBuf>,
 }
 
 impl ScanContext {
@@ -64,6 +67,7 @@ impl ScanContext {
         Self {
             project_path: Some(path),
             fixture_root: None,
+            app_data_path: None,
         }
     }
 
@@ -72,10 +76,16 @@ impl ScanContext {
         self
     }
 
+    pub fn with_app_data(mut self, path: PathBuf) -> Self {
+        self.app_data_path = Some(path);
+        self
+    }
+
     pub fn empty() -> Self {
         Self {
             project_path: None,
             fixture_root: None,
+            app_data_path: None,
         }
     }
 }

@@ -288,6 +288,60 @@ impl CodexAdapter {
                 };
                 mcp.enabled = Some(false);
             }
+            "enableSkill" => {
+                let slug = extract_slug(&intent.payload)?;
+                let pos = config.skills.iter().position(|s| s.slug == slug);
+                if pos.is_some() {
+                    warnings.push(format!(
+                        "Skill '{}' already exists and will be updated",
+                        slug
+                    ));
+                }
+                let skill_config = parse_skill_config(&intent.payload)?;
+                if let Some(index) = pos {
+                    config.skills[index] = skill_config;
+                } else {
+                    config.skills.push(skill_config);
+                }
+            }
+            "disableSkill" | "deleteSkill" => {
+                let slug = extract_slug(&intent.payload)?;
+                let pos = config.skills.iter().position(|s| s.slug == slug);
+                if pos.is_none() {
+                    return Err(AdapterError::Invalid(format!(
+                        "Skill '{}' not found",
+                        slug
+                    )));
+                }
+                config.skills.remove(pos.unwrap());
+            }
+            "enableSubAgent" => {
+                let slug = extract_slug(&intent.payload)?;
+                let pos = config.custom_agents.iter().position(|a| a.slug == slug);
+                if pos.is_some() {
+                    warnings.push(format!(
+                        "Sub-agent '{}' already exists and will be updated",
+                        slug
+                    ));
+                }
+                let agent_config = parse_agent_config(&intent.payload)?;
+                if let Some(index) = pos {
+                    config.custom_agents[index] = agent_config;
+                } else {
+                    config.custom_agents.push(agent_config);
+                }
+            }
+            "disableSubAgent" | "deleteSubAgent" => {
+                let slug = extract_slug(&intent.payload)?;
+                let pos = config.custom_agents.iter().position(|a| a.slug == slug);
+                if pos.is_none() {
+                    return Err(AdapterError::Invalid(format!(
+                        "Sub-agent '{}' not found",
+                        slug
+                    )));
+                }
+                config.custom_agents.remove(pos.unwrap());
+            }
             _ => {
                 return Err(AdapterError::Unsupported(format!(
                     "unsupported change intent kind: {}",
@@ -462,9 +516,57 @@ fn extract_name(payload: &JsonValue) -> AdapterResult<String> {
         .ok_or_else(|| AdapterError::Invalid("payload missing 'name' field".to_string()))
 }
 
+fn extract_slug(payload: &JsonValue) -> AdapterResult<String> {
+    payload
+        .get("slug")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| AdapterError::Invalid("payload missing 'slug' field".to_string()))
+}
+
 fn parse_mcp_config(payload: &JsonValue) -> AdapterResult<CodexMcpConfig> {
     serde_json::from_value(payload.clone())
         .map_err(|err| AdapterError::Invalid(format!("invalid MCP config: {err}")))
+}
+
+fn parse_skill_config(payload: &JsonValue) -> AdapterResult<CodexSkillConfig> {
+    serde_json::from_value(payload.clone())
+        .map_err(|err| AdapterError::Invalid(format!("invalid skill config: {err}")))
+}
+
+fn parse_agent_config(payload: &JsonValue) -> AdapterResult<CodexAgentConfig> {
+    let slug = extract_slug(payload)?;
+    let role = payload.get("role").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let description = payload
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let tools = payload
+        .get("tools")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let skills = payload
+        .get("skills")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(CodexAgentConfig {
+        slug,
+        description,
+        role,
+        tools,
+        skills,
+    })
 }
 
 fn update_mcp_config(payload: &JsonValue, existing: &mut CodexMcpConfig) -> AdapterResult<()> {
@@ -750,5 +852,311 @@ enabled = true"#,
             .unwrap_err();
 
         assert!(matches!(err, AdapterError::Parse(_)));
+    }
+
+    // ------------------------------------------------------------------
+    // Skill change plan tests
+    // ------------------------------------------------------------------
+
+    fn skill_payload(slug: &str, path: &str) -> JsonValue {
+        serde_json::json!({
+            "slug": slug,
+            "path": path,
+            "title": slug.to_string().replace("-", " ").to_title_case(),
+            "description": "A test skill",
+            "tags": ["test"]
+        })
+    }
+
+    trait TitleCase {
+        fn to_title_case(&self) -> String;
+    }
+
+    impl TitleCase for str {
+        fn to_title_case(&self) -> String {
+            self.split_whitespace()
+                .map(|word| {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+    }
+
+    #[test]
+    fn enable_skill_on_empty_config() {
+        let dir = tempdir().unwrap();
+        let adapter = CodexAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("enableSkill", skill_payload("my-skill", "/tmp/library/skills/my-skill")),
+            )
+            .unwrap();
+
+        assert_eq!(plan.operations.len(), 1);
+        assert_eq!(plan.operations[0].kind, "writeText");
+        assert_eq!(plan.patches.len(), 1);
+        assert!(plan.patches[0].before_hash.is_none());
+        assert!(plan.patches[0].after_hash.is_some());
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(content.contains("slug = \"my-skill\""));
+        assert!(content.contains("path = \"/tmp/library/skills/my-skill\""));
+    }
+
+    #[test]
+    fn enable_skill_duplicate_warns() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("config.toml"),
+            r#"[[skills]]
+slug = "dup"
+path = "/old"
+title = "Old"
+description = "old"
+tags = []
+"#,
+        )
+        .unwrap();
+
+        let adapter = CodexAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("enableSkill", skill_payload("dup", "/new")),
+            )
+            .unwrap();
+
+        assert_eq!(plan.warnings.len(), 1);
+        assert!(plan.warnings[0].contains("already exists"));
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(content.contains("path = \"/new\""));
+        assert!(!content.contains("path = \"/old\""));
+    }
+
+    #[test]
+    fn disable_skill_removes_entry() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("config.toml"),
+            r#"[[skills]]
+slug = "keep"
+path = "/keep"
+title = "Keep"
+
+[[skills]]
+slug = "remove"
+path = "/remove"
+title = "Remove"
+"#,
+        )
+        .unwrap();
+
+        let adapter = CodexAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableSkill", serde_json::json!({"slug": "remove"})),
+            )
+            .unwrap();
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(!content.contains("slug = \"remove\""));
+        assert!(content.contains("slug = \"keep\""));
+    }
+
+    #[test]
+    fn delete_skill_removes_entry() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("config.toml"),
+            r#"[[skills]]
+slug = "gone"
+path = "/gone"
+title = "Gone"
+"#,
+        )
+        .unwrap();
+
+        let adapter = CodexAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("deleteSkill", serde_json::json!({"slug": "gone"})),
+            )
+            .unwrap();
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(!content.contains("slug = \"gone\""));
+    }
+
+    #[test]
+    fn disable_missing_skill_returns_error() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("config.toml"), "").unwrap();
+
+        let adapter = CodexAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let err = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableSkill", serde_json::json!({"slug": "missing"})),
+            )
+            .unwrap_err();
+
+        assert!(matches!(err, AdapterError::Invalid(_)));
+        assert!(err.to_string().contains("not found"));
+    }
+
+    // ------------------------------------------------------------------
+    // Sub-agent change plan tests
+    // ------------------------------------------------------------------
+
+    fn agent_payload(slug: &str) -> JsonValue {
+        serde_json::json!({
+            "slug": slug,
+            "role": "A test agent",
+            "description": "Detailed description",
+            "tools": ["mcp1", "mcp2"],
+            "skills": ["skill1"]
+        })
+    }
+
+    #[test]
+    fn enable_sub_agent_on_empty_config() {
+        let dir = tempdir().unwrap();
+        let adapter = CodexAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("enableSubAgent", agent_payload("my-agent")),
+            )
+            .unwrap();
+
+        assert_eq!(plan.operations.len(), 1);
+        assert_eq!(plan.operations[0].kind, "writeText");
+        assert_eq!(plan.patches.len(), 1);
+        assert!(plan.patches[0].before_hash.is_none());
+        assert!(plan.patches[0].after_hash.is_some());
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(content.contains("slug = \"my-agent\""));
+        assert!(content.contains("role = \"A test agent\""));
+    }
+
+    #[test]
+    fn enable_sub_agent_duplicate_warns() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("config.toml"),
+            r#"[[custom_agents]]
+slug = "dup"
+role = "Old"
+description = "old"
+tools = []
+skills = []
+"#,
+        )
+        .unwrap();
+
+        let adapter = CodexAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("enableSubAgent", agent_payload("dup")),
+            )
+            .unwrap();
+
+        assert_eq!(plan.warnings.len(), 1);
+        assert!(plan.warnings[0].contains("already exists"));
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(content.contains("role = \"A test agent\""));
+        assert!(!content.contains("role = \"Old\""));
+    }
+
+    #[test]
+    fn disable_sub_agent_removes_entry() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("config.toml"),
+            r#"[[custom_agents]]
+slug = "keep"
+role = "Keep"
+
+[[custom_agents]]
+slug = "remove"
+role = "Remove"
+"#,
+        )
+        .unwrap();
+
+        let adapter = CodexAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableSubAgent", serde_json::json!({"slug": "remove"})),
+            )
+            .unwrap();
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(!content.contains("slug = \"remove\""));
+        assert!(content.contains("slug = \"keep\""));
+    }
+
+    #[test]
+    fn delete_sub_agent_removes_entry() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("config.toml"),
+            r#"[[custom_agents]]
+slug = "gone"
+role = "Gone"
+"#,
+        )
+        .unwrap();
+
+        let adapter = CodexAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("deleteSubAgent", serde_json::json!({"slug": "gone"})),
+            )
+            .unwrap();
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(!content.contains("slug = \"gone\""));
+    }
+
+    #[test]
+    fn disable_missing_sub_agent_returns_error() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("config.toml"), "").unwrap();
+
+        let adapter = CodexAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let err = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableSubAgent", serde_json::json!({"slug": "missing"})),
+            )
+            .unwrap_err();
+
+        assert!(matches!(err, AdapterError::Invalid(_)));
+        assert!(err.to_string().contains("not found"));
     }
 }

@@ -30,6 +30,8 @@ export type ChangeStatus =
 
 export type McpTransport = 'stdio' | 'sse' | 'http';
 
+export type LibraryKind = 'skills' | 'sub-agents' | 'prompts' | 'mcp-templates';
+
 export interface Agent {
   id: string;
   kind: AgentKind;
@@ -287,4 +289,42 @@ export interface Backup {
   changeSetId: string;
   manifestPath: string;
   createdAt: string;
+}
+
+export interface LibraryMetadata {
+  slug: string;
+  title: string;
+  description: string | null;
+  tags: string[];
+  entryFile: string | null;
+  role: string | null;
+  agentKinds: AgentKind[];
+  boundMcpIds: string[];
+  boundSkillIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubAgentMetadata {
+  slug: string;
+  title: string;
+  role: string;
+  description: string;
+  tags: string[];
+  agentKinds: AgentKind[];
+  boundMcpIds: string[];
+  boundSkillIds: string[];
+}
+
+export interface LibraryEntry {
+  kind: LibraryKind;
+  slug: string;
+  metadata: LibraryMetadata;
+}
+
+export interface LibraryEntryDetail {
+  kind: LibraryKind;
+  slug: string;
+  metadata: LibraryMetadata;
+  files: Record<string, string>;
 }

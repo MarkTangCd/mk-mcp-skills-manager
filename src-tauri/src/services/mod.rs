@@ -8,6 +8,7 @@ pub mod changes;
 pub mod diff;
 pub mod doctor;
 pub mod doctor_rules;
+pub mod library;
 pub mod projects;
 pub mod resources;
 pub mod scan;
@@ -24,6 +25,10 @@ pub use doctor_rules::{
     PiUntrustedExtensionRule, SkillBrokenPathRule, SkillMissingDescriptionRule,
     SkillMissingEntryRule, SkillUnusedRule, SubAgentMissingMcpRule, SubAgentMissingSkillRule,
     SubAgentNameConflictRule, SubAgentOverPermissionRule,
+};
+pub use library::{
+    LibraryEntry, LibraryEntryDetail, LibraryError, LibraryKind, LibraryMetadata, LibraryResult,
+    LibraryService,
 };
 pub use projects::{ProjectError, ProjectService};
 pub use resources::{

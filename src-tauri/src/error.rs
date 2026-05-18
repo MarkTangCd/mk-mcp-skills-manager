@@ -103,6 +103,36 @@ impl From<crate::services::BackupError> for CommandError {
     }
 }
 
+impl From<crate::services::LibraryError> for CommandError {
+    fn from(err: crate::services::LibraryError) -> Self {
+        match err {
+            crate::services::LibraryError::InvalidKind(k) => {
+                CommandError::new("invalid_kind", k).with_target("library")
+            }
+            crate::services::LibraryError::InvalidSlug(s) => {
+                CommandError::new("invalid_slug", s).with_target("library")
+            }
+            crate::services::LibraryError::DuplicateSlug(s) => {
+                CommandError::new("duplicate_slug", s).with_target("library")
+            }
+            crate::services::LibraryError::NotFound(kind, slug) => {
+                CommandError::new("library_not_found", format!("{}/{} not found", kind, slug))
+                    .with_target("library")
+            }
+            crate::services::LibraryError::PathNotAllowed(p) => {
+                CommandError::new("path_not_allowed", p).with_target("library")
+            }
+            _ => CommandError::new("library_error", err.to_string()),
+        }
+    }
+}
+
+impl From<crate::services::ResourceError> for CommandError {
+    fn from(err: crate::services::ResourceError) -> Self {
+        CommandError::new("resource_error", err.to_string()).fatal()
+    }
+}
+
 impl From<std::io::Error> for CommandError {
     fn from(err: std::io::Error) -> Self {
         CommandError::new("io_error", err.to_string())

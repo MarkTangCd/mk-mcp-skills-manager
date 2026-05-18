@@ -244,6 +244,16 @@ impl OpencodeAdapter {
                 };
                 mcp.enabled = Some(false);
             }
+            "enableSkill" | "disableSkill" | "deleteSkill" => {
+                return Err(AdapterError::Unsupported(
+                    "opencode skill sync is not supported".to_string()
+                ));
+            }
+            "enableSubAgent" | "disableSubAgent" | "deleteSubAgent" => {
+                return Err(AdapterError::Unsupported(
+                    "opencode sub-agent sync is not supported".to_string()
+                ));
+            }
             _ => {
                 return Err(AdapterError::Unsupported(format!(
                     "unsupported change intent kind: {}",

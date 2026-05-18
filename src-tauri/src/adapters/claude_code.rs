@@ -299,6 +299,46 @@ impl ClaudeCodeAdapter {
                 };
                 mcp.enabled = Some(false);
             }
+            "enableSkill" => {
+                let slug = extract_slug(&intent.payload)?;
+                if config.skills.contains_key(&slug) {
+                    warnings.push(format!(
+                        "Skill '{}' already exists and will be updated",
+                        slug
+                    ));
+                }
+                let skill_config = parse_skill_config(&intent.payload)?;
+                config.skills.insert(slug, skill_config);
+            }
+            "disableSkill" | "deleteSkill" => {
+                let slug = extract_slug(&intent.payload)?;
+                if config.skills.remove(&slug).is_none() {
+                    return Err(AdapterError::Invalid(format!(
+                        "Skill '{}' not found",
+                        slug
+                    )));
+                }
+            }
+            "enableSubAgent" => {
+                let slug = extract_slug(&intent.payload)?;
+                if config.agents.contains_key(&slug) {
+                    warnings.push(format!(
+                        "Sub-agent '{}' already exists and will be overwritten",
+                        slug
+                    ));
+                }
+                let agent_config = parse_agent_config(&intent.payload)?;
+                config.agents.insert(slug, agent_config);
+            }
+            "disableSubAgent" | "deleteSubAgent" => {
+                let slug = extract_slug(&intent.payload)?;
+                if config.agents.remove(&slug).is_none() {
+                    return Err(AdapterError::Invalid(format!(
+                        "Sub-agent '{}' not found",
+                        slug
+                    )));
+                }
+            }
             _ => {
                 return Err(AdapterError::Unsupported(format!(
                     "unsupported change intent kind: {}",
@@ -473,9 +513,55 @@ fn extract_name(payload: &JsonValue) -> AdapterResult<String> {
         .ok_or_else(|| AdapterError::Invalid("payload missing 'name' field".to_string()))
 }
 
+fn extract_slug(payload: &JsonValue) -> AdapterResult<String> {
+    payload
+        .get("slug")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| AdapterError::Invalid("payload missing 'slug' field".to_string()))
+}
+
 fn parse_mcp_config(payload: &JsonValue) -> AdapterResult<ClaudeMcpConfig> {
     serde_json::from_value(payload.clone())
         .map_err(|err| AdapterError::Invalid(format!("invalid MCP config: {err}")))
+}
+
+fn parse_skill_config(payload: &JsonValue) -> AdapterResult<ClaudeSkillConfig> {
+    serde_json::from_value(payload.clone())
+        .map_err(|err| AdapterError::Invalid(format!("invalid skill config: {err}")))
+}
+
+fn parse_agent_config(payload: &JsonValue) -> AdapterResult<ClaudeAgentConfig> {
+    let role = payload.get("role").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let description = payload
+        .get("description")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let tools = payload
+        .get("tools")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let skills = payload
+        .get("skills")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(ClaudeAgentConfig {
+        description: description.or(role.clone()),
+        role,
+        tools,
+        skills,
+    })
 }
 
 fn update_mcp_config(payload: &JsonValue, existing: &mut ClaudeMcpConfig) -> AdapterResult<()> {
@@ -765,5 +851,319 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(err, AdapterError::Parse(_)));
+    }
+
+    // ------------------------------------------------------------------
+    // Skill change plan tests
+    // ------------------------------------------------------------------
+
+    fn skill_payload(slug: &str, path: &str) -> JsonValue {
+        serde_json::json!({
+            "slug": slug,
+            "path": path,
+            "title": slug.to_string().replace("-", " ").to_title_case(),
+            "description": "A test skill",
+            "tags": ["test"]
+        })
+    }
+
+    trait TitleCase {
+        fn to_title_case(&self) -> String;
+    }
+
+    impl TitleCase for str {
+        fn to_title_case(&self) -> String {
+            self.split_whitespace()
+                .map(|word| {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+    }
+
+    #[test]
+    fn enable_skill_on_empty_config() {
+        let dir = tempdir().unwrap();
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("enableSkill", skill_payload("my-skill", "/tmp/library/skills/my-skill")),
+            )
+            .unwrap();
+
+        assert_eq!(plan.operations.len(), 1);
+        assert_eq!(plan.operations[0].kind, "writeJson");
+        assert_eq!(plan.patches.len(), 1);
+        assert!(plan.patches[0].before_hash.is_none());
+        assert!(plan.patches[0].after_hash.is_some());
+
+        let payload = &plan.operations[0].payload;
+        let skills = payload.get("skills").unwrap();
+        assert!(skills.get("my-skill").is_some());
+        assert_eq!(
+            skills.get("my-skill").unwrap().get("path").unwrap().as_str().unwrap(),
+            "/tmp/library/skills/my-skill"
+        );
+    }
+
+    #[test]
+    fn enable_skill_duplicate_warns() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{"skills":{"dup":{"path":"/old","title":"Old","description":"old","tags":[]}}}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("enableSkill", skill_payload("dup", "/new")),
+            )
+            .unwrap();
+
+        assert_eq!(plan.warnings.len(), 1);
+        assert!(plan.warnings[0].contains("already exists"));
+
+        let payload = &plan.operations[0].payload;
+        let skills = payload.get("skills").unwrap();
+        assert_eq!(
+            skills.get("dup").unwrap().get("path").unwrap().as_str().unwrap(),
+            "/new"
+        );
+    }
+
+    #[test]
+    fn disable_skill_removes_entry() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{"skills":{"keep":{"path":"/keep","title":"Keep","description":"keep","tags":[]},"remove":{"path":"/remove","title":"Remove","description":"remove","tags":[]}}}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableSkill", serde_json::json!({"slug": "remove"})),
+            )
+            .unwrap();
+
+        let payload = &plan.operations[0].payload;
+        let skills = payload.get("skills").unwrap();
+        assert!(skills.get("remove").is_none());
+        assert!(skills.get("keep").is_some());
+    }
+
+    #[test]
+    fn delete_skill_removes_entry() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{"skills":{"gone":{"path":"/gone","title":"Gone","description":"gone","tags":[]}}}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("deleteSkill", serde_json::json!({"slug": "gone"})),
+            )
+            .unwrap();
+
+        let payload = &plan.operations[0].payload;
+        // When skills map becomes empty, serde skips serializing it.
+        if let Some(skills) = payload.get("skills") {
+            assert!(skills.get("gone").is_none());
+        }
+        // Verify the skill is not present by checking raw content.
+        let raw = serde_json::to_string(payload).unwrap();
+        assert!(!raw.contains("\"gone\""));
+    }
+
+    #[test]
+    fn disable_missing_skill_returns_error() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join(".claude.json"), r#"{"skills":{}}"#).unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let err = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableSkill", serde_json::json!({"slug": "missing"})),
+            )
+            .unwrap_err();
+
+        assert!(matches!(err, AdapterError::Invalid(_)));
+        assert!(err.to_string().contains("not found"));
+    }
+
+    // ------------------------------------------------------------------
+    // Sub-agent change plan tests
+    // ------------------------------------------------------------------
+
+    fn agent_payload(slug: &str) -> JsonValue {
+        serde_json::json!({
+            "slug": slug,
+            "role": "A test agent",
+            "description": "Detailed description",
+            "tools": ["mcp1", "mcp2"],
+            "skills": ["skill1"]
+        })
+    }
+
+    #[test]
+    fn enable_sub_agent_on_empty_config() {
+        let dir = tempdir().unwrap();
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("enableSubAgent", agent_payload("my-agent")),
+            )
+            .unwrap();
+
+        assert_eq!(plan.operations.len(), 1);
+        assert_eq!(plan.operations[0].kind, "writeJson");
+        assert_eq!(plan.patches.len(), 1);
+        assert!(plan.patches[0].before_hash.is_none());
+        assert!(plan.patches[0].after_hash.is_some());
+        assert!(plan.patches[0].diff.contains("my-agent"));
+        assert!(plan.warnings.is_empty());
+
+        let payload = &plan.operations[0].payload;
+        let agents = payload.get("agents").unwrap();
+        assert!(agents.get("my-agent").is_some());
+        assert_eq!(
+            agents
+                .get("my-agent")
+                .unwrap()
+                .get("role")
+                .unwrap()
+                .as_str()
+                .unwrap(),
+            "A test agent"
+        );
+    }
+
+    #[test]
+    fn enable_sub_agent_duplicate_warns() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{"agents":{"dup":{"role":"Old","description":"old","tools":[],"skills":[]}}}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("enableSubAgent", agent_payload("dup")),
+            )
+            .unwrap();
+
+        assert_eq!(plan.warnings.len(), 1);
+        assert!(plan.warnings[0].contains("already exists"));
+
+        let payload = &plan.operations[0].payload;
+        let agents = payload.get("agents").unwrap();
+        assert_eq!(
+            agents
+                .get("dup")
+                .unwrap()
+                .get("role")
+                .unwrap()
+                .as_str()
+                .unwrap(),
+            "A test agent"
+        );
+    }
+
+    #[test]
+    fn disable_sub_agent_removes_entry() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{"agents":{"keep":{"role":"Keep","tools":[],"skills":[]},"remove":{"role":"Remove","tools":[],"skills":[]}}}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableSubAgent", serde_json::json!({"slug": "remove"})),
+            )
+            .unwrap();
+
+        let payload = &plan.operations[0].payload;
+        if let Some(agents) = payload.get("agents") {
+            assert!(agents.get("remove").is_none());
+            assert!(agents.get("keep").is_some());
+        }
+        let raw = serde_json::to_string(payload).unwrap();
+        assert!(!raw.contains("\"remove\""));
+    }
+
+    #[test]
+    fn delete_sub_agent_removes_entry() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join(".claude.json"),
+            r#"{"agents":{"gone":{"role":"Gone","tools":[],"skills":[]}}}"#,
+        )
+        .unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("deleteSubAgent", serde_json::json!({"slug": "gone"})),
+            )
+            .unwrap();
+
+        let payload = &plan.operations[0].payload;
+        if let Some(agents) = payload.get("agents") {
+            assert!(agents.get("gone").is_none());
+        }
+        let raw = serde_json::to_string(payload).unwrap();
+        assert!(!raw.contains("\"gone\""));
+    }
+
+    #[test]
+    fn disable_missing_sub_agent_returns_error() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join(".claude.json"), r#"{"agents":{}}"#).unwrap();
+
+        let adapter = ClaudeCodeAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let err = adapter
+            .build_change_plan(
+                &ctx,
+                &intent("disableSubAgent", serde_json::json!({"slug": "missing"})),
+            )
+            .unwrap_err();
+
+        assert!(matches!(err, AdapterError::Invalid(_)));
+        assert!(err.to_string().contains("not found"));
     }
 }

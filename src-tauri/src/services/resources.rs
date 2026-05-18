@@ -358,6 +358,179 @@ impl ResourceService {
         })
     }
 
+    pub fn upsert_library_skill(
+        &self,
+        slug: &str,
+        title: &str,
+        description: Option<&str>,
+        source_path: Option<&str>,
+    ) -> ResourceResult<()> {
+        let now = Utc::now().to_rfc3339();
+        let resource_id = format!("library:skill:{}", slug);
+        let payload = serde_json::json!({
+            "description": description,
+            "slug": slug,
+            "source": "library",
+        });
+        let payload_json = serde_json::to_string(&payload)?;
+
+        self.db.with_conn_mut(|conn| -> ResourceResult<()> {
+            conn.execute(
+                "INSERT INTO resources
+                 (id, resource_type, name, slug, agent_kind, source_path, json_payload, status, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6, 'active', ?7, ?7)
+                 ON CONFLICT(id) DO UPDATE SET
+                   name = excluded.name,
+                   slug = excluded.slug,
+                   source_path = excluded.source_path,
+                   json_payload = excluded.json_payload,
+                   status = 'active',
+                   updated_at = excluded.updated_at",
+                params![
+                    resource_id,
+                    resource_type_str(ResourceType::Skill),
+                    title,
+                    slug,
+                    source_path,
+                    payload_json,
+                    now
+                ],
+            )?;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    pub fn delete_library_skill(&self, slug: &str) -> ResourceResult<()> {
+        let resource_id = format!("library:skill:{}", slug);
+        self.db.with_conn_mut(|conn| -> ResourceResult<()> {
+            conn.execute(
+                "DELETE FROM resources WHERE id = ?1",
+                params![resource_id],
+            )?;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    /// Record that a library skill is bound to an agent in a given scope.
+    pub fn record_skill_binding(
+        &self,
+        slug: &str,
+        agent_kind: AgentKind,
+        scope_type: ScopeType,
+        project_id: Option<&str>,
+    ) -> ResourceResult<()> {
+        let resource_id = format!("library:skill:{}", slug);
+        let now = Utc::now().to_rfc3339();
+        self.db.with_conn_mut(|conn| -> ResourceResult<()> {
+            conn.execute(
+                "INSERT INTO resource_bindings
+                 (id, resource_type, resource_id, agent_kind, project_id, scope_type,
+                  enabled, created_at, updated_at, config_path, status)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, NULL, 'active')
+                 ON CONFLICT(resource_type, resource_id, agent_kind, project_id, scope_type)
+                 DO UPDATE SET
+                   enabled = excluded.enabled,
+                   updated_at = excluded.updated_at,
+                   status = 'active'",
+                params![
+                    Uuid::new_v4().to_string(),
+                    resource_type_str(ResourceType::Skill),
+                    resource_id,
+                    agent_kind.as_str(),
+                    project_id,
+                    scope_type_str(scope_type),
+                    true,
+                    now
+                ],
+            )?;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    /// Remove a library skill binding from an agent.
+    pub fn remove_skill_binding(
+        &self,
+        slug: &str,
+        agent_kind: AgentKind,
+        project_id: Option<&str>,
+    ) -> ResourceResult<()> {
+        let resource_id = format!("library:skill:{}", slug);
+        self.db.with_conn_mut(|conn| -> ResourceResult<()> {
+            conn.execute(
+                "DELETE FROM resource_bindings
+                 WHERE resource_id = ?1
+                   AND agent_kind = ?2
+                   AND ((?3 IS NULL AND project_id IS NULL)
+                     OR (?3 IS NOT NULL AND project_id = ?3))",
+                params![resource_id, agent_kind.as_str(), project_id],
+            )?;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    /// Record that a library sub-agent is bound to an agent in a given scope.
+    pub fn record_sub_agent_binding(
+        &self,
+        slug: &str,
+        agent_kind: AgentKind,
+        scope_type: ScopeType,
+        project_id: Option<&str>,
+    ) -> ResourceResult<()> {
+        let resource_id = format!("library:sub-agent:{}", slug);
+        let now = Utc::now().to_rfc3339();
+        self.db.with_conn_mut(|conn| -> ResourceResult<()> {
+            conn.execute(
+                "INSERT INTO resource_bindings
+                 (id, resource_type, resource_id, agent_kind, project_id, scope_type,
+                  enabled, created_at, updated_at, config_path, status)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, NULL, 'active')
+                 ON CONFLICT(resource_type, resource_id, agent_kind, project_id, scope_type)
+                 DO UPDATE SET
+                   enabled = excluded.enabled,
+                   updated_at = excluded.updated_at,
+                   status = 'active'",
+                params![
+                    Uuid::new_v4().to_string(),
+                    resource_type_str(ResourceType::SubAgent),
+                    resource_id,
+                    agent_kind.as_str(),
+                    project_id,
+                    scope_type_str(scope_type),
+                    true,
+                    now
+                ],
+            )?;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    /// Remove a library sub-agent binding from an agent.
+    pub fn remove_sub_agent_binding(
+        &self,
+        slug: &str,
+        agent_kind: AgentKind,
+        project_id: Option<&str>,
+    ) -> ResourceResult<()> {
+        let resource_id = format!("library:sub-agent:{}", slug);
+        self.db.with_conn_mut(|conn| -> ResourceResult<()> {
+            conn.execute(
+                "DELETE FROM resource_bindings
+                 WHERE resource_id = ?1
+                   AND agent_kind = ?2
+                   AND ((?3 IS NULL AND project_id IS NULL)
+                     OR (?3 IS NOT NULL AND project_id = ?3))",
+                params![resource_id, agent_kind.as_str(), project_id],
+            )?;
+            Ok(())
+        })?;
+        Ok(())
+    }
+
     fn bindings_for(&self, resource_id: &str) -> ResourceResult<Vec<ResourceBindingRecord>> {
         let bindings = self
             .db
@@ -848,5 +1021,32 @@ mod tests {
             .unwrap();
         assert_eq!(codex_cell.status, "disabled");
         assert_eq!(codex_cell.sources.len(), 1);
+    }
+
+    #[test]
+    fn upsert_library_skill_creates_resource_record() {
+        let (_db, _indexer, resources) = service();
+        resources
+            .upsert_library_skill("code-review", "Code Reviewer", Some("Review PRs"), Some("/tmp/skill.md"))
+            .unwrap();
+
+        let list = resources.list(Some(ResourceType::Skill)).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "library:skill:code-review");
+        assert_eq!(list[0].name, "Code Reviewer");
+        assert_eq!(list[0].source_path, Some("/tmp/skill.md".to_string()));
+        assert_eq!(list[0].payload.get("description").and_then(|v| v.as_str()), Some("Review PRs"));
+    }
+
+    #[test]
+    fn delete_library_skill_removes_resource_record() {
+        let (_db, _indexer, resources) = service();
+        resources
+            .upsert_library_skill("to-delete", "To Delete", None, None)
+            .unwrap();
+        assert_eq!(resources.list(Some(ResourceType::Skill)).unwrap().len(), 1);
+
+        resources.delete_library_skill("to-delete").unwrap();
+        assert_eq!(resources.list(Some(ResourceType::Skill)).unwrap().len(), 0);
     }
 }

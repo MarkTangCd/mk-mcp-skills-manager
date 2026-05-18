@@ -245,7 +245,7 @@ impl ChangeService {
             "createSkill" | "updateSkill" | "deleteSkill" | "enableSkill" | "disableSkill" => {
                 ResourceType::Skill
             }
-            "createSubAgent" | "updateSubAgent" | "deleteSubAgent" => ResourceType::SubAgent,
+            "createSubAgent" | "updateSubAgent" | "deleteSubAgent" | "enableSubAgent" | "disableSubAgent" => ResourceType::SubAgent,
             _ => {
                 return Err(ChangeError::Adapter(format!(
                     "unsupported change_type: {}",
