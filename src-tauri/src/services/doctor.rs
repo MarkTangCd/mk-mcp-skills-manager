@@ -50,10 +50,7 @@ impl RuleContext {
             .collect()
     }
 
-    pub fn resources_for_agent(
-        &self,
-        agent_kind: AgentKind,
-    ) -> Vec<&ResourceRecord> {
+    pub fn resources_for_agent(&self, agent_kind: AgentKind) -> Vec<&ResourceRecord> {
         self.resources
             .iter()
             .filter(|r| r.agent_kind == Some(agent_kind))
@@ -114,10 +111,7 @@ impl DoctorService {
     }
 
     /// Run rules scoped to a single project (or global when `project_id` is None).
-    pub fn run_for_project(
-        &self,
-        project_id: Option<&str>,
-    ) -> DoctorResult<Vec<DoctorIssue>> {
+    pub fn run_for_project(&self, project_id: Option<&str>) -> DoctorResult<Vec<DoctorIssue>> {
         let now = Utc::now().to_rfc3339();
         let resources = self.resources.list(None)?;
         let ctx = RuleContext {
@@ -211,8 +205,7 @@ impl DoctorService {
         let rows = self
             .db
             .with_conn(|c| -> rusqlite::Result<Vec<DoctorIssue>> {
-                let sql = concat!(
-                    "SELECT id, severity, category, message, target_ref_json, fixable
+                let sql = "SELECT id, severity, category, message, target_ref_json, fixable
                      FROM doctor_issues
                      WHERE resolved = 0
                        AND (?1 IS NULL OR severity = ?1)
@@ -225,20 +218,14 @@ impl DoctorService {
                          WHEN 'info' THEN 3
                          ELSE 4
                        END,
-                       created_at DESC"
-                );
+                       created_at DESC";
                 let mut stmt = c.prepare(sql)?;
                 let iter = stmt.query_map(
-                    params![
-                        severity.map(severity_str),
-                        category,
-                        project_id
-                    ],
+                    params![severity.map(severity_str), category, project_id],
                     |row| {
                         let severity_raw: String = row.get(1)?;
                         let target_json: Option<String> = row.get(4)?;
-                        let target_ref = target_json
-                            .and_then(|s| serde_json::from_str(&s).ok());
+                        let target_ref = target_json.and_then(|s| serde_json::from_str(&s).ok());
                         Ok(DoctorIssue {
                             id: row.get(0)?,
                             severity: parse_severity(&severity_raw),
@@ -494,7 +481,9 @@ mod tests {
         let svc = svc.with_rules(vec![Arc::new(MultiRule)]);
         svc.run_for_project(None).unwrap();
 
-        let critical_only = svc.list_issues(Some(IssueSeverity::Critical), None, None).unwrap();
+        let critical_only = svc
+            .list_issues(Some(IssueSeverity::Critical), None, None)
+            .unwrap();
         assert_eq!(critical_only.len(), 1);
         assert_eq!(critical_only[0].message, "C1");
     }

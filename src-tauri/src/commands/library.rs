@@ -21,7 +21,10 @@ pub fn library_create(
 ) -> CommandResult<LibraryEntry> {
     let library_kind = parse_kind(&kind)?;
     let metadata = build_metadata(&slug, metadata)?;
-    state.library.create(library_kind, &slug, metadata).map_err(Into::into)
+    state
+        .library
+        .create(library_kind, &slug, metadata)
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -44,16 +47,25 @@ pub fn library_update(
     let library_kind = parse_kind(&kind)?;
 
     // Read existing metadata so we can preserve created_at and merge fields.
-    let existing = state.library.get(library_kind, &slug).map_err(Into::<CommandError>::into)?;
+    let existing = state
+        .library
+        .get(library_kind, &slug)
+        .map_err(Into::<CommandError>::into)?;
     let metadata = merge_metadata(existing.metadata, metadata)?;
 
-    state.library.update(library_kind, &slug, metadata).map_err(Into::into)
+    state
+        .library
+        .update(library_kind, &slug, metadata)
+        .map_err(Into::into)
 }
 
 #[tauri::command]
 pub fn library_delete(kind: String, slug: String, state: State<'_, AppState>) -> CommandResult<()> {
     let library_kind = parse_kind(&kind)?;
-    state.library.delete(library_kind, &slug).map_err(Into::into)
+    state
+        .library
+        .delete(library_kind, &slug)
+        .map_err(Into::into)
 }
 
 // ------------------------------------------------------------------
@@ -66,7 +78,10 @@ pub fn skills_list(
     tags: Option<Vec<String>>,
     state: State<'_, AppState>,
 ) -> CommandResult<Vec<LibraryEntry>> {
-    state.library.skills_list(search.as_deref(), tags.as_deref()).map_err(Into::into)
+    state
+        .library
+        .skills_list(search.as_deref(), tags.as_deref())
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -80,7 +95,13 @@ pub fn skills_create(
 ) -> CommandResult<LibraryEntry> {
     let entry = state
         .library
-        .skills_create(&slug, &title, description.as_deref(), tags, entry_file.as_deref())
+        .skills_create(
+            &slug,
+            &title,
+            description.as_deref(),
+            tags,
+            entry_file.as_deref(),
+        )
         .map_err(Into::<CommandError>::into)?;
 
     let source_path = entry_file.as_ref().map(|name| {
@@ -93,7 +114,12 @@ pub fn skills_create(
     });
     state
         .resources
-        .upsert_library_skill(&slug, &title, description.as_deref(), source_path.as_deref())
+        .upsert_library_skill(
+            &slug,
+            &title,
+            description.as_deref(),
+            source_path.as_deref(),
+        )
         .map_err(Into::<CommandError>::into)?;
 
     Ok(entry)
@@ -163,7 +189,12 @@ pub fn skills_update(
     });
     state
         .resources
-        .upsert_library_skill(&slug, &metadata.title, metadata.description.as_deref(), source_path.as_deref())
+        .upsert_library_skill(
+            &slug,
+            &metadata.title,
+            metadata.description.as_deref(),
+            source_path.as_deref(),
+        )
         .map_err(Into::<CommandError>::into)?;
 
     Ok(entry)
@@ -192,7 +223,10 @@ pub fn sub_agents_list(
     tags: Option<Vec<String>>,
     state: State<'_, AppState>,
 ) -> CommandResult<Vec<LibraryEntry>> {
-    state.library.sub_agents_list(search.as_deref(), tags.as_deref()).map_err(Into::into)
+    state
+        .library
+        .sub_agents_list(search.as_deref(), tags.as_deref())
+        .map_err(Into::into)
 }
 
 #[tauri::command]
@@ -210,7 +244,10 @@ pub fn sub_agents_create(
 }
 
 #[tauri::command]
-pub fn sub_agents_get(slug: String, state: State<'_, AppState>) -> CommandResult<LibraryEntryDetail> {
+pub fn sub_agents_get(
+    slug: String,
+    state: State<'_, AppState>,
+) -> CommandResult<LibraryEntryDetail> {
     state.library.sub_agents_get(&slug).map_err(Into::into)
 }
 
@@ -255,18 +292,14 @@ fn sub_agents_build_plan(
     if let Some(slug) = intent.payload.get("slug").and_then(|v| v.as_str()) {
         if let Ok(detail) = state.library.sub_agents_get(slug) {
             if let Some(obj) = intent.payload.as_object_mut() {
-                obj.entry("role".to_string()).or_insert_with(|| {
-                    serde_json::json!(detail.metadata.role)
-                });
-                obj.entry("description".to_string()).or_insert_with(|| {
-                    serde_json::json!(detail.metadata.description)
-                });
-                obj.entry("tools".to_string()).or_insert_with(|| {
-                    serde_json::json!(detail.metadata.bound_mcp_ids)
-                });
-                obj.entry("skills".to_string()).or_insert_with(|| {
-                    serde_json::json!(detail.metadata.bound_skill_ids)
-                });
+                obj.entry("role".to_string())
+                    .or_insert_with(|| serde_json::json!(detail.metadata.role));
+                obj.entry("description".to_string())
+                    .or_insert_with(|| serde_json::json!(detail.metadata.description));
+                obj.entry("tools".to_string())
+                    .or_insert_with(|| serde_json::json!(detail.metadata.bound_mcp_ids));
+                obj.entry("skills".to_string())
+                    .or_insert_with(|| serde_json::json!(detail.metadata.bound_skill_ids));
             }
         }
     }
@@ -286,22 +319,26 @@ fn sub_agents_build_plan(
     // Record or remove binding based on intent type.
     if let Some(slug) = intent.payload.get("slug").and_then(|v| v.as_str()) {
         if let Some(agent_kind) = intent.agent_kind {
-            let scope_type = intent.scope_type.unwrap_or(crate::domain::ScopeType::Global);
+            let scope_type = intent
+                .scope_type
+                .unwrap_or(crate::domain::ScopeType::Global);
             match intent.change_type.as_str() {
                 "enableSubAgent" => {
-                    state.resources.record_sub_agent_binding(
-                        slug,
-                        agent_kind,
-                        scope_type,
-                        intent.project_id.as_deref(),
-                    ).map_err(Into::<CommandError>::into)?;
+                    state
+                        .resources
+                        .record_sub_agent_binding(
+                            slug,
+                            agent_kind,
+                            scope_type,
+                            intent.project_id.as_deref(),
+                        )
+                        .map_err(Into::<CommandError>::into)?;
                 }
                 "disableSubAgent" | "deleteSubAgent" => {
-                    state.resources.remove_sub_agent_binding(
-                        slug,
-                        agent_kind,
-                        intent.project_id.as_deref(),
-                    ).map_err(Into::<CommandError>::into)?;
+                    state
+                        .resources
+                        .remove_sub_agent_binding(slug, agent_kind, intent.project_id.as_deref())
+                        .map_err(Into::<CommandError>::into)?;
                 }
                 _ => {}
             }
@@ -375,7 +412,7 @@ pub fn skills_disable(
 // ------------------------------------------------------------------
 
 fn parse_kind(kind: &str) -> CommandResult<LibraryKind> {
-    LibraryKind::from_str(kind)
+    LibraryKind::parse(kind)
         .ok_or_else(|| CommandError::new("invalid_kind", format!("invalid library kind: {}", kind)))
 }
 
@@ -423,10 +460,7 @@ fn build_metadata(slug: &str, value: JsonValue) -> CommandResult<LibraryMetadata
 
 /// Merge an existing metadata record with a partial update from the frontend.
 /// Preserves `created_at`; refreshes `updated_at`.
-fn merge_metadata(
-    existing: LibraryMetadata,
-    value: JsonValue,
-) -> CommandResult<LibraryMetadata> {
+fn merge_metadata(existing: LibraryMetadata, value: JsonValue) -> CommandResult<LibraryMetadata> {
     let title = value
         .get("title")
         .and_then(|v| v.as_str())
@@ -514,7 +548,7 @@ fn build_sub_agent_metadata(slug: &str, value: JsonValue) -> CommandResult<Libra
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| v.as_str().and_then(|s| parse_agent_kind(s)))
+                .filter_map(|v| v.as_str().and_then(parse_agent_kind))
                 .filter(|k| !matches!(k, AgentKind::Pi))
                 .collect()
         })
@@ -593,7 +627,7 @@ fn merge_sub_agent_metadata(
         .and_then(|v| v.as_array())
         .map(|arr| {
             arr.iter()
-                .filter_map(|v| v.as_str().and_then(|s| parse_agent_kind(s)))
+                .filter_map(|v| v.as_str().and_then(parse_agent_kind))
                 .filter(|k| !matches!(k, AgentKind::Pi))
                 .collect()
         })

@@ -4,7 +4,10 @@ use crate::adapters::{
     AdapterRegistry, ClaudeCodeAdapter, CodexAdapter, OpencodeAdapter, PiAdapter,
 };
 use crate::db::Database;
-use crate::services::{AgentService, AppDataService, BackupService, DoctorService, LibraryService, ProjectService, ResourceService, ScanService};
+use crate::services::{
+    AgentService, AppDataService, BackupService, DoctorService, LibraryService, ProjectService,
+    ResourceService, ScanService,
+};
 
 /// Application state shared across Tauri commands.
 #[derive(Clone)]

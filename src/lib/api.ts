@@ -57,6 +57,11 @@ export interface DashboardSnapshot {
   bootstrap: BootstrapInfo;
 }
 
+export interface PromptRenderResult {
+  content: string;
+  missingVariables: string[];
+}
+
 export class ApiError extends Error {
   readonly code: string;
   readonly target?: string;
@@ -142,7 +147,44 @@ export const api = {
     restore: (id: string) => call<Backup>('backups_restore', { id }),
   },
   prompts: {
-    list: () => call<PromptTemplate[]>('prompts_list'),
+    list: (search?: string, tags?: string[]) =>
+      call<PromptTemplate[]>('prompts_list', { search: search ?? null, tags: tags ?? null }),
+    create: (
+      slug: string,
+      title: string,
+      category: string,
+      tags: string[],
+      favorite: boolean,
+      body: string,
+    ) =>
+      call<PromptTemplate>('prompts_create', {
+        slug,
+        title,
+        category,
+        tags,
+        favorite,
+        body,
+      }),
+    get: (slug: string) => call<PromptTemplate>('prompts_get', { slug }),
+    update: (
+      slug: string,
+      title: string,
+      category: string,
+      tags: string[],
+      favorite: boolean,
+      body: string,
+    ) =>
+      call<PromptTemplate>('prompts_update', {
+        slug,
+        title,
+        category,
+        tags,
+        favorite,
+        body,
+      }),
+    delete: (slug: string) => call<void>('prompts_delete', { slug }),
+    render: (slug: string, values: Record<string, string>) =>
+      call<PromptRenderResult>('prompts_render', { slug, values }),
   },
   library: {
     list: (kind: LibraryKind) => call<LibraryEntry[]>('library_list', { kind }),

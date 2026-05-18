@@ -19,6 +19,8 @@ pub struct PiAdapter;
 struct PiSettings {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     resource_paths: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    security: BTreeMap<String, bool>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     skills: Vec<PiSkillConfig>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -270,10 +272,9 @@ impl PiAdapter {
         if let Some(path) = first_existing(&candidates) {
             return Ok(path);
         }
-        candidates
-            .into_iter()
-            .next()
-            .ok_or_else(|| AdapterError::Invalid(format!("no config candidates for scope {scope_type:?}")))
+        candidates.into_iter().next().ok_or_else(|| {
+            AdapterError::Invalid(format!("no config candidates for scope {scope_type:?}"))
+        })
     }
 
     fn build_change_plan_inner(
@@ -305,26 +306,103 @@ impl PiAdapter {
                 let library_path = ctx
                     .app_data_path
                     .as_ref()
-                    .map(|p| p.join("library").join("skills").to_string_lossy().to_string())
-                    .or_else(|| {
-                        intent.payload.get("libraryPath").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    .map(|p| {
+                        p.join("library")
+                            .join("skills")
+                            .to_string_lossy()
+                            .to_string()
                     })
-                    .ok_or_else(|| AdapterError::Invalid(
-                        "app_data_path or libraryPath required for Pi enableSkill".to_string()
-                    ))?;
+                    .or_else(|| {
+                        intent
+                            .payload
+                            .get("libraryPath")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .ok_or_else(|| {
+                        AdapterError::Invalid(
+                            "app_data_path or libraryPath required for Pi enableSkill".to_string(),
+                        )
+                    })?;
 
                 if settings.resource_paths.contains_key("skills") {
                     warnings.push(
-                        "resource_paths.skills already exists and will be overwritten".to_string()
+                        "resource_paths.skills already exists and will be overwritten".to_string(),
                     );
                 }
-                settings.resource_paths.insert("skills".to_string(), library_path);
+                settings
+                    .resource_paths
+                    .insert("skills".to_string(), library_path);
+            }
+            "updatePiResourcePath" => {
+                let key = intent
+                    .payload
+                    .get("key")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| {
+                        AdapterError::Invalid(
+                            "key is required for Pi resource path update".to_string(),
+                        )
+                    })?;
+                let path = intent
+                    .payload
+                    .get("path")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| {
+                        AdapterError::Invalid(
+                            "path is required for Pi resource path update".to_string(),
+                        )
+                    })?;
+                if !is_supported_resource_path_key(key) {
+                    return Err(AdapterError::Invalid(format!(
+                        "unsupported Pi resource path key: {key}"
+                    )));
+                }
+                if !Path::new(path).exists() {
+                    warnings.push(format!("Pi resource path does not exist: {path}"));
+                }
+                settings
+                    .resource_paths
+                    .insert(key.to_string(), path.to_string());
+            }
+            "updatePiSecuritySetting" => {
+                let key = intent
+                    .payload
+                    .get("key")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| {
+                        AdapterError::Invalid(
+                            "key is required for Pi security setting update".to_string(),
+                        )
+                    })?;
+                let enabled = intent
+                    .payload
+                    .get("enabled")
+                    .and_then(|value| value.as_bool())
+                    .ok_or_else(|| {
+                        AdapterError::Invalid(
+                            "enabled is required for Pi security setting update".to_string(),
+                        )
+                    })?;
+                if !is_supported_security_key(key) {
+                    return Err(AdapterError::Invalid(format!(
+                        "unsupported Pi security setting key: {key}"
+                    )));
+                }
+                if !enabled {
+                    warnings.push(format!(
+                        "Disabling skill commands setting '{key}' may prevent Pi skills from invoking local commands"
+                    ));
+                }
+                settings.security.insert(key.to_string(), enabled);
             }
             "disableSkill" | "deleteSkill" => {
-                let library_path = ctx
-                    .app_data_path
-                    .as_ref()
-                    .map(|p| p.join("library").join("skills").to_string_lossy().to_string());
+                let library_path = ctx.app_data_path.as_ref().map(|p| {
+                    p.join("library")
+                        .join("skills")
+                        .to_string_lossy()
+                        .to_string()
+                });
 
                 if let Some(current) = settings.resource_paths.get("skills") {
                     if let Some(ref expected) = library_path {
@@ -341,13 +419,13 @@ impl PiAdapter {
                     }
                 } else {
                     return Err(AdapterError::Invalid(
-                        "resource_paths.skills not found".to_string()
+                        "resource_paths.skills not found".to_string(),
                     ));
                 }
             }
             "enableSubAgent" | "disableSubAgent" | "deleteSubAgent" => {
                 return Err(AdapterError::Unsupported(
-                    "Pi does not support sub-agents".to_string()
+                    "Pi does not support sub-agents".to_string(),
                 ));
             }
             _ => {
@@ -358,8 +436,8 @@ impl PiAdapter {
             }
         }
 
-        let new_content = serde_yaml::to_string(&settings)
-            .map_err(|err| AdapterError::Parse(err.to_string()))?;
+        let new_content =
+            serde_yaml::to_string(&settings).map_err(|err| AdapterError::Parse(err.to_string()))?;
         let after_hash = sha256_str(&new_content);
         let diff = make_diff(&existing_content, &new_content);
 
@@ -512,6 +590,17 @@ fn scope_type_label(scope_type: ScopeType) -> &'static str {
     }
 }
 
+fn is_supported_resource_path_key(key: &str) -> bool {
+    matches!(
+        key,
+        "skills" | "prompt_templates" | "extensions" | "packages" | "themes"
+    )
+}
+
+fn is_supported_security_key(key: &str) -> bool {
+    matches!(key, "allow_skill_commands" | "allow_extension_commands")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -606,10 +695,7 @@ mod tests {
             .with_fixture(dir.path().to_path_buf())
             .with_app_data("/agenthub".into());
         let plan = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("enableSkill", serde_json::json!({})),
-            )
+            .build_change_plan(&ctx, &intent("enableSkill", serde_json::json!({})))
             .unwrap();
 
         assert_eq!(plan.operations.len(), 1);
@@ -638,10 +724,7 @@ mod tests {
             .with_fixture(dir.path().to_path_buf())
             .with_app_data("/agenthub".into());
         let plan = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("enableSkill", serde_json::json!({})),
-            )
+            .build_change_plan(&ctx, &intent("enableSkill", serde_json::json!({})))
             .unwrap();
 
         assert_eq!(plan.warnings.len(), 1);
@@ -666,10 +749,7 @@ mod tests {
             .with_fixture(dir.path().to_path_buf())
             .with_app_data("/agenthub".into());
         let plan = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("disableSkill", serde_json::json!({})),
-            )
+            .build_change_plan(&ctx, &intent("disableSkill", serde_json::json!({})))
             .unwrap();
 
         let content = plan.operations[0].payload.as_str().unwrap();
@@ -691,10 +771,7 @@ mod tests {
             .with_fixture(dir.path().to_path_buf())
             .with_app_data("/agenthub".into());
         let plan = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("disableSkill", serde_json::json!({})),
-            )
+            .build_change_plan(&ctx, &intent("disableSkill", serde_json::json!({})))
             .unwrap();
 
         assert_eq!(plan.warnings.len(), 1);
@@ -707,17 +784,18 @@ mod tests {
     #[test]
     fn disable_missing_skill_returns_error() {
         let dir = tempdir().unwrap();
-        fs::write(dir.path().join("settings.yaml"), "resource_paths:\n  other: /other\n").unwrap();
+        fs::write(
+            dir.path().join("settings.yaml"),
+            "resource_paths:\n  other: /other\n",
+        )
+        .unwrap();
 
         let adapter = PiAdapter::new();
         let ctx = ScanContext::empty()
             .with_fixture(dir.path().to_path_buf())
             .with_app_data("/agenthub".into());
         let err = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("disableSkill", serde_json::json!({})),
-            )
+            .build_change_plan(&ctx, &intent("disableSkill", serde_json::json!({})))
             .unwrap_err();
 
         assert!(matches!(err, AdapterError::Invalid(_)));
@@ -738,13 +816,67 @@ mod tests {
             .with_fixture(dir.path().to_path_buf())
             .with_app_data("/agenthub".into());
         let plan = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("deleteSkill", serde_json::json!({})),
-            )
+            .build_change_plan(&ctx, &intent("deleteSkill", serde_json::json!({})))
             .unwrap();
 
         let content = plan.operations[0].payload.as_str().unwrap();
         assert!(!content.contains("skills"));
+    }
+
+    #[test]
+    fn update_resource_path_writes_named_pi_path() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("settings.yaml"),
+            "resource_paths:\n  skills: /old\n",
+        )
+        .unwrap();
+
+        let adapter = PiAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent(
+                    "updatePiResourcePath",
+                    serde_json::json!({ "key": "prompt_templates", "path": "/agenthub/library/prompts" }),
+                ),
+            )
+            .unwrap();
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(content.contains("prompt_templates"));
+        assert!(content.contains("/agenthub/library/prompts"));
+        assert!(content.contains("skills: /old"));
+    }
+
+    #[test]
+    fn update_security_setting_toggles_skill_commands() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("settings.yaml"),
+            "resource_paths:\n  skills: /agenthub/library/skills\n",
+        )
+        .unwrap();
+
+        let adapter = PiAdapter::new();
+        let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
+        let plan = adapter
+            .build_change_plan(
+                &ctx,
+                &intent(
+                    "updatePiSecuritySetting",
+                    serde_json::json!({ "key": "allow_skill_commands", "enabled": false }),
+                ),
+            )
+            .unwrap();
+
+        let content = plan.operations[0].payload.as_str().unwrap();
+        assert!(content.contains("security"));
+        assert!(content.contains("allow_skill_commands: false"));
+        assert!(plan
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("Disabling skill commands")));
     }
 }

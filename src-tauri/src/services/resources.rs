@@ -404,10 +404,7 @@ impl ResourceService {
     pub fn delete_library_skill(&self, slug: &str) -> ResourceResult<()> {
         let resource_id = format!("library:skill:{}", slug);
         self.db.with_conn_mut(|conn| -> ResourceResult<()> {
-            conn.execute(
-                "DELETE FROM resources WHERE id = ?1",
-                params![resource_id],
-            )?;
+            conn.execute("DELETE FROM resources WHERE id = ?1", params![resource_id])?;
             Ok(())
         })?;
         Ok(())
@@ -572,6 +569,7 @@ impl ResourceService {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn upsert_resource(
     tx: &rusqlite::Transaction<'_>,
     project_id: Option<&str>,
@@ -1027,7 +1025,12 @@ mod tests {
     fn upsert_library_skill_creates_resource_record() {
         let (_db, _indexer, resources) = service();
         resources
-            .upsert_library_skill("code-review", "Code Reviewer", Some("Review PRs"), Some("/tmp/skill.md"))
+            .upsert_library_skill(
+                "code-review",
+                "Code Reviewer",
+                Some("Review PRs"),
+                Some("/tmp/skill.md"),
+            )
             .unwrap();
 
         let list = resources.list(Some(ResourceType::Skill)).unwrap();
@@ -1035,7 +1038,10 @@ mod tests {
         assert_eq!(list[0].id, "library:skill:code-review");
         assert_eq!(list[0].name, "Code Reviewer");
         assert_eq!(list[0].source_path, Some("/tmp/skill.md".to_string()));
-        assert_eq!(list[0].payload.get("description").and_then(|v| v.as_str()), Some("Review PRs"));
+        assert_eq!(
+            list[0].payload.get("description").and_then(|v| v.as_str()),
+            Some("Review PRs")
+        );
     }
 
     #[test]

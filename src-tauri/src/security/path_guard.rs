@@ -48,7 +48,10 @@ impl PathGuard {
     /// Add a new root to the allowlist at runtime.  Duplicates are ignored.
     pub fn allow(&self, root: impl AsRef<Path>) {
         let path = canonicalize_lossy(root.as_ref());
-        let mut roots = self.allowed_roots.write().unwrap_or_else(|e| e.into_inner());
+        let mut roots = self
+            .allowed_roots
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
         if !roots.iter().any(|r| r == &path) {
             roots.push(path);
         }

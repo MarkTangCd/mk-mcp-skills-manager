@@ -15,9 +15,11 @@ use crate::commands::{
     doctor_issue_summary, doctor_list_issues, doctor_run, doctor_run_all, library_create,
     library_delete, library_get, library_list, library_update, projects_add, projects_get,
     projects_get_matrix, projects_latest_scans, projects_list, projects_remove, projects_rescan,
-    prompts_list, resources_list, skills_create, skills_delete, skills_disable, skills_enable,
-    skills_get, skills_import, skills_list, skills_update, sub_agent_templates, sub_agents_create,
-    sub_agents_delete, sub_agents_disable, sub_agents_enable, sub_agents_get, sub_agents_list, sub_agents_update,
+    prompts_create, prompts_delete, prompts_get, prompts_list, prompts_render, prompts_update,
+    resources_list, skills_create, skills_delete, skills_disable, skills_enable, skills_get,
+    skills_import, skills_list, skills_update, sub_agent_templates, sub_agents_create,
+    sub_agents_delete, sub_agents_disable, sub_agents_enable, sub_agents_get, sub_agents_list,
+    sub_agents_update,
 };
 use crate::db::Database;
 use crate::services::AppDataService;
@@ -62,6 +64,11 @@ pub fn run() {
             backups_list,
             backups_restore,
             prompts_list,
+            prompts_create,
+            prompts_get,
+            prompts_update,
+            prompts_delete,
+            prompts_render,
             resources_list,
             library_list,
             library_create,

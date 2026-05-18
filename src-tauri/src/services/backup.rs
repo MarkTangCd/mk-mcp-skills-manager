@@ -299,7 +299,7 @@ mod tests {
         let (_dir, db, svc) = svc();
         seed_change_set(&db, "cs2");
         let missing = PathBuf::from("/this/path/does/not/exist/xyz.txt");
-        let backup = svc.create("cs2", &[missing.clone()]).unwrap();
+        let backup = svc.create("cs2", std::slice::from_ref(&missing)).unwrap();
         let manifest = svc.load_manifest(&backup.id).unwrap();
         assert_eq!(manifest.files.len(), 1);
         assert_eq!(manifest.files[0].size, 0);
@@ -339,7 +339,7 @@ mod tests {
         let file_a = dir.path().join("a.txt");
         fs::write(&file_a, "hello").unwrap();
 
-        let backup = svc.create("cs5", &[file_a.clone()]).unwrap();
+        let backup = svc.create("cs5", std::slice::from_ref(&file_a)).unwrap();
         // Modify original after backup.
         fs::write(&file_a, "modified").unwrap();
         assert_eq!(fs::read_to_string(&file_a).unwrap(), "modified");
@@ -358,7 +358,7 @@ mod tests {
             fs::remove_file(&missing).unwrap();
         }
 
-        let backup = svc.create("cs6", &[missing.clone()]).unwrap();
+        let backup = svc.create("cs6", std::slice::from_ref(&missing)).unwrap();
         // After backup, someone creates the file.
         fs::write(&missing, "I should be removed").unwrap();
         assert!(missing.exists());
@@ -375,7 +375,7 @@ mod tests {
         let file_a = dir.path().join("a.txt");
         fs::write(&file_a, "hello").unwrap();
 
-        let backup = svc.create("cs7", &[file_a.clone()]).unwrap();
+        let backup = svc.create("cs7", std::slice::from_ref(&file_a)).unwrap();
         fs::write(&file_a, "modified").unwrap();
 
         svc.restore_change_set(&backup.id).unwrap();

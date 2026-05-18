@@ -36,7 +36,10 @@ pub fn projects_add(
     name: Option<String>,
 ) -> CommandResult<Project> {
     let project = state.projects.add(&path, name.as_deref())?;
-    state.app_data.guard().allow(std::path::Path::new(&project.path));
+    state
+        .app_data
+        .guard()
+        .allow(std::path::Path::new(&project.path));
     Ok(project)
 }
 

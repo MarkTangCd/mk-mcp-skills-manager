@@ -33,11 +33,13 @@ impl DoctorRule for DuplicateMcpRule {
                     .push((binding.agent_kind, resource.id.clone()));
             }
         }
-        for (_, agents) in &by_name {
+        for agents in by_name.values() {
             let unique_agents: HashSet<AgentKind> = agents.iter().map(|(a, _)| *a).collect();
             if unique_agents.len() > 1 {
-                let agent_names: Vec<String> =
-                    unique_agents.iter().map(|a| a.as_str().to_string()).collect();
+                let agent_names: Vec<String> = unique_agents
+                    .iter()
+                    .map(|a| a.as_str().to_string())
+                    .collect();
                 issues.push(RawIssue {
                     severity: IssueSeverity::Warning,
                     message: format!(
@@ -119,11 +121,19 @@ impl DoctorRule for MissingEnvRule {
 pub struct PlaintextSecretRule;
 
 const SENSITIVE_KEYS: &[&str] = &[
-    "api_key", "apikey", "api-key",
-    "token", "auth_token", "access_token",
-    "secret", "client_secret", "app_secret",
-    "password", "passwd",
-    "auth", "authorization",
+    "api_key",
+    "apikey",
+    "api-key",
+    "token",
+    "auth_token",
+    "access_token",
+    "secret",
+    "client_secret",
+    "app_secret",
+    "password",
+    "passwd",
+    "auth",
+    "authorization",
 ];
 
 fn is_sensitive_key(key: &str) -> bool {
@@ -276,11 +286,10 @@ impl DoctorRule for DisabledButReferencedRule {
             .resources_by_type(ResourceType::Mcp)
             .iter()
             .filter(|r| {
-                r.payload
+                !r.payload
                     .get("enabled")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true)
-                    == false
             })
             .map(|r| r.id.clone())
             .collect();
@@ -453,10 +462,7 @@ impl DoctorRule for SkillUnusedRule {
             if !has_active {
                 issues.push(RawIssue {
                     severity: IssueSeverity::Info,
-                    message: format!(
-                        "Skill '{}' is not enabled in any project.",
-                        resource.name
-                    ),
+                    message: format!("Skill '{}' is not enabled in any project.", resource.name),
                     target_ref: Some(DoctorTargetRef {
                         resource_type: Some(ResourceType::Skill),
                         resource_id: Some(resource.id.clone()),
@@ -630,7 +636,14 @@ impl DoctorRule for SubAgentMissingSkillRule {
 pub struct SubAgentOverPermissionRule;
 
 const PERMISSION_HEURISTICS: &[&str] = &[
-    "admin", "root", "full", "all", "system", "unrestricted", "superuser", "sudo",
+    "admin",
+    "root",
+    "full",
+    "all",
+    "system",
+    "unrestricted",
+    "superuser",
+    "sudo",
 ];
 
 fn suggests_elevated_permissions(text: &str) -> bool {
@@ -755,11 +768,7 @@ impl DoctorRule for PiDuplicatePackageRule {
             if ids.len() > 1 {
                 issues.push(RawIssue {
                     severity: IssueSeverity::Warning,
-                    message: format!(
-                        "Pi package '{}' is declared {} times.",
-                        source,
-                        ids.len()
-                    ),
+                    message: format!("Pi package '{}' is declared {} times.", source, ids.len()),
                     target_ref: Some(DoctorTargetRef {
                         resource_type: Some(ResourceType::PiResource),
                         resource_id: Some(ids[0].clone()),
@@ -804,10 +813,7 @@ impl DoctorRule for PiUntrustedExtensionRule {
             if !trusted {
                 issues.push(RawIssue {
                     severity: IssueSeverity::Warning,
-                    message: format!(
-                        "Pi extension '{}' is not marked as trusted.",
-                        resource.name
-                    ),
+                    message: format!("Pi extension '{}' is not marked as trusted.", resource.name),
                     target_ref: Some(DoctorTargetRef {
                         resource_type: Some(ResourceType::PiResource),
                         resource_id: Some(resource.id.clone()),
@@ -852,16 +858,22 @@ impl DoctorRule for PiProjectOverrideRule {
                 .push(resource);
         }
         for (name, group) in by_name {
-            let global_count = group.iter().filter(|r| {
-                r.bindings.iter().any(|b| {
-                    b.scope_type == ScopeType::Global && b.status == "active"
+            let global_count = group
+                .iter()
+                .filter(|r| {
+                    r.bindings
+                        .iter()
+                        .any(|b| b.scope_type == ScopeType::Global && b.status == "active")
                 })
-            }).count();
-            let project_count = group.iter().filter(|r| {
-                r.bindings.iter().any(|b| {
-                    b.scope_type == ScopeType::Project && b.status == "active"
+                .count();
+            let project_count = group
+                .iter()
+                .filter(|r| {
+                    r.bindings
+                        .iter()
+                        .any(|b| b.scope_type == ScopeType::Project && b.status == "active")
                 })
-            }).count();
+                .count();
             if global_count > 0 && project_count > 0 {
                 issues.push(RawIssue {
                     severity: IssueSeverity::Info,
@@ -891,7 +903,7 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    use crate::domain::{ScopeType};
+    use crate::domain::ScopeType;
     use crate::services::resources::{ResourceBindingRecord, ResourceRecord};
 
     fn mcp_resource(name: &str, enabled: bool, payload: serde_json::Value) -> ResourceRecord {
@@ -902,7 +914,11 @@ mod tests {
             slug: Some(name.to_string()),
             agent_kind: Some(AgentKind::Codex),
             source_path: Some("/tmp/codex/mcp.json".into()),
-            status: if enabled { "active".into() } else { "missing".into() },
+            status: if enabled {
+                "active".into()
+            } else {
+                "missing".into()
+            },
             payload,
             updated_at: "2026-01-01T00:00:00Z".into(),
             bindings: vec![ResourceBindingRecord {
@@ -914,7 +930,11 @@ mod tests {
                 project_name: Some("Project One".into()),
                 scope_type: ScopeType::Project,
                 enabled,
-                status: if enabled { "active".into() } else { "missing".into() },
+                status: if enabled {
+                    "active".into()
+                } else {
+                    "missing".into()
+                },
                 config_path: Some("/tmp/codex/mcp.json".into()),
                 updated_at: "2026-01-01T00:00:00Z".into(),
             }],
@@ -961,15 +981,12 @@ mod tests {
 
     #[test]
     fn duplicate_mcp_detected_across_agents() {
-        let resources = vec![
-            mcp_resource("github", true, json!({"enabled": true})),
-            {
-                let mut r = mcp_resource("github", true, json!({"enabled": true}));
-                r.agent_kind = Some(AgentKind::ClaudeCode);
-                r.bindings[0].agent_kind = AgentKind::ClaudeCode;
-                r
-            },
-        ];
+        let resources = vec![mcp_resource("github", true, json!({"enabled": true})), {
+            let mut r = mcp_resource("github", true, json!({"enabled": true}));
+            r.agent_kind = Some(AgentKind::ClaudeCode);
+            r.bindings[0].agent_kind = AgentKind::ClaudeCode;
+            r
+        }];
         let ctx = ctx_with(resources);
         let rule = DuplicateMcpRule;
         let issues = rule.check(&ctx);

@@ -72,9 +72,9 @@ pub fn changes_apply_plan(
                 // Rescan failed — mark the change set as applied_with_warning
                 // and return the updated plan so the UI can surface the warning.
                 let _ = svc.transition(&plan_id, ChangeStatus::AppliedWithWarning);
-                return svc
-                    .get_plan(&plan_id)
-                    .map_err(|err| crate::error::CommandError::new("apply_warning", err.to_string()));
+                return svc.get_plan(&plan_id).map_err(|err| {
+                    crate::error::CommandError::new("apply_warning", err.to_string())
+                });
             }
         }
     }

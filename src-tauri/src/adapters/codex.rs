@@ -5,7 +5,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-use crate::domain::{AgentKind, ChangeOperation, FilePatch, McpServer, McpTransport, ScopeType, Skill, SubAgent};
+use crate::domain::{
+    AgentKind, ChangeOperation, FilePatch, McpServer, McpTransport, ScopeType, Skill, SubAgent,
+};
 
 use super::common::{
     command_version, display_path, duplicate_name_warnings, env_ref_keys, first_existing, home_dir,
@@ -210,10 +212,9 @@ impl CodexAdapter {
         if let Some(path) = first_existing(&candidates) {
             return Ok(path);
         }
-        candidates
-            .into_iter()
-            .next()
-            .ok_or_else(|| AdapterError::Invalid(format!("no config candidates for scope {scope_type:?}")))
+        candidates.into_iter().next().ok_or_else(|| {
+            AdapterError::Invalid(format!("no config candidates for scope {scope_type:?}"))
+        })
     }
 
     fn build_change_plan_inner(
@@ -308,10 +309,7 @@ impl CodexAdapter {
                 let slug = extract_slug(&intent.payload)?;
                 let pos = config.skills.iter().position(|s| s.slug == slug);
                 if pos.is_none() {
-                    return Err(AdapterError::Invalid(format!(
-                        "Skill '{}' not found",
-                        slug
-                    )));
+                    return Err(AdapterError::Invalid(format!("Skill '{}' not found", slug)));
                 }
                 config.skills.remove(pos.unwrap());
             }
@@ -350,8 +348,8 @@ impl CodexAdapter {
             }
         }
 
-        let new_content = toml::to_string_pretty(&config)
-            .map_err(|err| AdapterError::Parse(err.to_string()))?;
+        let new_content =
+            toml::to_string_pretty(&config).map_err(|err| AdapterError::Parse(err.to_string()))?;
         let after_hash = sha256_str(&new_content);
         let diff = make_diff(&existing_content, &new_content);
 
@@ -536,7 +534,10 @@ fn parse_skill_config(payload: &JsonValue) -> AdapterResult<CodexSkillConfig> {
 
 fn parse_agent_config(payload: &JsonValue) -> AdapterResult<CodexAgentConfig> {
     let slug = extract_slug(payload)?;
-    let role = payload.get("role").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let role = payload
+        .get("role")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let description = payload
         .get("description")
         .and_then(|v| v.as_str())
@@ -836,18 +837,17 @@ enabled = true"#,
     #[test]
     fn invalid_config_returns_recoverable_error() {
         let dir = tempdir().unwrap();
-        fs::write(
-            dir.path().join("config.toml"),
-            r#"[mcp_servers"#,
-        )
-        .unwrap();
+        fs::write(dir.path().join("config.toml"), r#"[mcp_servers"#).unwrap();
 
         let adapter = CodexAdapter::new();
         let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
         let err = adapter
             .build_change_plan(
                 &ctx,
-                &intent("createMcp", serde_json::json!({"name": "srv", "enabled": true})),
+                &intent(
+                    "createMcp",
+                    serde_json::json!({"name": "srv", "enabled": true}),
+                ),
             )
             .unwrap_err();
 
@@ -895,7 +895,10 @@ enabled = true"#,
         let plan = adapter
             .build_change_plan(
                 &ctx,
-                &intent("enableSkill", skill_payload("my-skill", "/tmp/library/skills/my-skill")),
+                &intent(
+                    "enableSkill",
+                    skill_payload("my-skill", "/tmp/library/skills/my-skill"),
+                ),
             )
             .unwrap();
 
@@ -928,10 +931,7 @@ tags = []
         let adapter = CodexAdapter::new();
         let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
         let plan = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("enableSkill", skill_payload("dup", "/new")),
-            )
+            .build_change_plan(&ctx, &intent("enableSkill", skill_payload("dup", "/new")))
             .unwrap();
 
         assert_eq!(plan.warnings.len(), 1);
@@ -1038,10 +1038,7 @@ title = "Gone"
         let adapter = CodexAdapter::new();
         let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
         let plan = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("enableSubAgent", agent_payload("my-agent")),
-            )
+            .build_change_plan(&ctx, &intent("enableSubAgent", agent_payload("my-agent")))
             .unwrap();
 
         assert_eq!(plan.operations.len(), 1);
@@ -1073,10 +1070,7 @@ skills = []
         let adapter = CodexAdapter::new();
         let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
         let plan = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("enableSubAgent", agent_payload("dup")),
-            )
+            .build_change_plan(&ctx, &intent("enableSubAgent", agent_payload("dup")))
             .unwrap();
 
         assert_eq!(plan.warnings.len(), 1);

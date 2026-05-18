@@ -100,9 +100,11 @@ export interface PromptTemplate {
   id: string;
   slug: string;
   title: string;
+  category: string | null;
   body: string;
   variables: string[];
   tags: string[];
+  favorite: boolean;
 }
 
 export interface ResourceBinding {

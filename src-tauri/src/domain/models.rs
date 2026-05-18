@@ -91,9 +91,11 @@ pub struct PromptTemplate {
     pub id: String,
     pub slug: String,
     pub title: String,
+    pub category: Option<String>,
     pub body: String,
     pub variables: Vec<String>,
     pub tags: Vec<String>,
+    pub favorite: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,8 +225,7 @@ impl ChangePlan {
     /// Returns true when the plan can be confirmed by the user.
     /// A plan with validation errors cannot be confirmed.
     pub fn can_confirm(&self) -> bool {
-        matches!(self.status, ChangeStatus::Previewed)
-            && self.validation_errors.is_empty()
+        matches!(self.status, ChangeStatus::Previewed) && self.validation_errors.is_empty()
     }
 
     /// Returns true when the plan is ready for apply.

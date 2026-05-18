@@ -165,10 +165,9 @@ impl OpencodeAdapter {
         if let Some(path) = first_existing(&candidates) {
             return Ok(path);
         }
-        candidates
-            .into_iter()
-            .next()
-            .ok_or_else(|| AdapterError::Invalid(format!("no config candidates for scope {scope_type:?}")))
+        candidates.into_iter().next().ok_or_else(|| {
+            AdapterError::Invalid(format!("no config candidates for scope {scope_type:?}"))
+        })
     }
 
     fn build_change_plan_inner(
@@ -186,9 +185,8 @@ impl OpencodeAdapter {
             ("{}".to_string(), None)
         };
 
-        let mut config: OpencodeConfig =
-            serde_json::from_str(&existing_content)
-                .map_err(|err| AdapterError::Parse(err.to_string()))?;
+        let mut config: OpencodeConfig = serde_json::from_str(&existing_content)
+            .map_err(|err| AdapterError::Parse(err.to_string()))?;
 
         let mut warnings = Vec::new();
 
@@ -246,12 +244,12 @@ impl OpencodeAdapter {
             }
             "enableSkill" | "disableSkill" | "deleteSkill" => {
                 return Err(AdapterError::Unsupported(
-                    "opencode skill sync is not supported".to_string()
+                    "opencode skill sync is not supported".to_string(),
                 ));
             }
             "enableSubAgent" | "disableSubAgent" | "deleteSubAgent" => {
                 return Err(AdapterError::Unsupported(
-                    "opencode sub-agent sync is not supported".to_string()
+                    "opencode sub-agent sync is not supported".to_string(),
                 ));
             }
             _ => {
@@ -262,8 +260,8 @@ impl OpencodeAdapter {
             }
         }
 
-        let payload = serde_json::to_value(&config)
-            .map_err(|err| AdapterError::Parse(err.to_string()))?;
+        let payload =
+            serde_json::to_value(&config).map_err(|err| AdapterError::Parse(err.to_string()))?;
         let new_content = serde_json::to_string_pretty(&payload)
             .map_err(|err| AdapterError::Parse(err.to_string()))?;
         let after_hash = sha256_str(&new_content);
@@ -431,10 +429,7 @@ fn parse_mcp_config(payload: &JsonValue) -> AdapterResult<OpencodeMcpConfig> {
         .map_err(|err| AdapterError::Invalid(format!("invalid MCP config: {err}")))
 }
 
-fn update_mcp_config(
-    payload: &JsonValue,
-    existing: &mut OpencodeMcpConfig,
-) -> AdapterResult<()> {
+fn update_mcp_config(payload: &JsonValue, existing: &mut OpencodeMcpConfig) -> AdapterResult<()> {
     if let Some(ty) = payload.get("type").and_then(|v| v.as_str()) {
         existing.mcp_type = Some(ty.to_string());
     }
@@ -644,11 +639,8 @@ mod tests {
 
         let payload = &plan.operations[0].payload;
         let mcp = payload.get("mcp").unwrap().get("srv").unwrap();
-        assert_eq!(
-            mcp.get("command").unwrap().as_array().unwrap()[1],
-            "new"
-        );
-        assert_eq!(mcp.get("enabled").unwrap().as_bool().unwrap(), true);
+        assert_eq!(mcp.get("command").unwrap().as_array().unwrap()[1], "new");
+        assert!(mcp.get("enabled").unwrap().as_bool().unwrap());
         // Type should be preserved
         assert_eq!(mcp.get("type").unwrap().as_str().unwrap(), "local");
     }
@@ -742,18 +734,17 @@ mod tests {
     #[test]
     fn invalid_config_returns_recoverable_error() {
         let dir = tempdir().unwrap();
-        fs::write(
-            dir.path().join("opencode.json"),
-            r#"{ "mcp": { "broken": "#,
-        )
-        .unwrap();
+        fs::write(dir.path().join("opencode.json"), r#"{ "mcp": { "broken": "#).unwrap();
 
         let adapter = OpencodeAdapter::new();
         let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
         let err = adapter
             .build_change_plan(
                 &ctx,
-                &intent("createMcp", serde_json::json!({"name": "srv", "enabled": true})),
+                &intent(
+                    "createMcp",
+                    serde_json::json!({"name": "srv", "enabled": true}),
+                ),
             )
             .unwrap_err();
 

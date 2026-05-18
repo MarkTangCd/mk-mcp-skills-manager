@@ -11,9 +11,12 @@ use rusqlite::{params, OptionalExtension};
 use serde_json;
 use thiserror::Error;
 
-use crate::adapters::{AdapterRegistry, ScanContext, ChangeIntent as AdapterIntent};
+use crate::adapters::{AdapterRegistry, ChangeIntent as AdapterIntent, ScanContext};
 use crate::db::{Database, DbError};
-use crate::domain::{AgentKind, ChangeOperation, ChangePlan, ChangeSet, ChangeStatus, DiffSummary, ChangeIntent as DomainIntent, ResourceType, ScopeType};
+use crate::domain::{
+    AgentKind, ChangeIntent as DomainIntent, ChangeOperation, ChangePlan, ChangeSet, ChangeStatus,
+    DiffSummary, ResourceType, ScopeType,
+};
 use crate::security::PathGuard;
 use crate::services::BackupService;
 use uuid::Uuid;
@@ -23,7 +26,10 @@ pub enum ChangeError {
     #[error("change set not found: {0}")]
     NotFound(String),
     #[error("invalid state transition from {from:?} to {to:?}")]
-    InvalidTransition { from: ChangeStatus, to: ChangeStatus },
+    InvalidTransition {
+        from: ChangeStatus,
+        to: ChangeStatus,
+    },
     #[error("plan has validation errors and cannot be confirmed")]
     ValidationFailed,
     #[error("path not allowed: {0}")]
@@ -208,10 +214,11 @@ impl ChangeService {
             return Err(ChangeError::ValidationFailed);
         }
 
-        plan.transition_to(to).map_err(|_msg| ChangeError::InvalidTransition {
-            from: plan.status,
-            to,
-        })?;
+        plan.transition_to(to)
+            .map_err(|_msg| ChangeError::InvalidTransition {
+                from: plan.status,
+                to,
+            })?;
 
         self.save_plan(&plan)?;
         Ok(plan)
@@ -234,9 +241,9 @@ impl ChangeService {
             .agent_kind
             .ok_or_else(|| ChangeError::Adapter("agent_kind is required".to_string()))?;
 
-        let adapter = registry
-            .get(agent_kind)
-            .ok_or_else(|| ChangeError::Adapter(format!("no adapter found for {:?}", agent_kind)))?;
+        let adapter = registry.get(agent_kind).ok_or_else(|| {
+            ChangeError::Adapter(format!("no adapter found for {:?}", agent_kind))
+        })?;
 
         let resource_type = match intent.change_type.as_str() {
             "createMcp" | "updateMcp" | "deleteMcp" | "enableMcp" | "disableMcp" => {
@@ -245,7 +252,9 @@ impl ChangeService {
             "createSkill" | "updateSkill" | "deleteSkill" | "enableSkill" | "disableSkill" => {
                 ResourceType::Skill
             }
-            "createSubAgent" | "updateSubAgent" | "deleteSubAgent" | "enableSubAgent" | "disableSubAgent" => ResourceType::SubAgent,
+            "createSubAgent" | "updateSubAgent" | "deleteSubAgent" | "enableSubAgent"
+            | "disableSubAgent" => ResourceType::SubAgent,
+            "updatePiResourcePath" | "updatePiSecuritySetting" => ResourceType::PiResource,
             _ => {
                 return Err(ChangeError::Adapter(format!(
                     "unsupported change_type: {}",
@@ -401,9 +410,7 @@ impl ChangeService {
                     failed_plan.transition_to(ChangeStatus::Failed).ok();
                     failed_plan.updated_at = Utc::now().to_rfc3339();
                     let _ = self.save_plan(&failed_plan);
-                    return Err(ChangeError::ApplyFailed(
-                        validation.messages.join("; "),
-                    ));
+                    return Err(ChangeError::ApplyFailed(validation.messages.join("; ")));
                 }
             }
         }
@@ -411,13 +418,15 @@ impl ChangeService {
         // 6. Transition to Applied and record backup id in the DB row.
         self.transition(plan_id, ChangeStatus::Applied)?;
         let now = Utc::now().to_rfc3339();
-        self.db.with_conn(|c| -> rusqlite::Result<()> {
-            c.execute(
-                "UPDATE change_sets SET backup_id = ?1, updated_at = ?2 WHERE id = ?3",
-                params![&backup.id, &now, plan_id],
-            )?;
-            Ok(())
-        }).map_err(DbError::from)?;
+        self.db
+            .with_conn(|c| -> rusqlite::Result<()> {
+                c.execute(
+                    "UPDATE change_sets SET backup_id = ?1, updated_at = ?2 WHERE id = ?3",
+                    params![&backup.id, &now, plan_id],
+                )?;
+                Ok(())
+            })
+            .map_err(DbError::from)?;
 
         self.get_plan(plan_id)
     }
@@ -427,8 +436,7 @@ impl ChangeService {
         let parent = path
             .parent()
             .ok_or_else(|| ChangeError::ApplyFailed(format!("no parent for {}", op.target)))?;
-        std::fs::create_dir_all(parent)
-            .map_err(|e| ChangeError::ApplyFailed(e.to_string()))?;
+        std::fs::create_dir_all(parent).map_err(|e| ChangeError::ApplyFailed(e.to_string()))?;
 
         let content = match op.kind.as_str() {
             "writeText" => op.payload.as_str().unwrap_or("").to_string(),
@@ -456,8 +464,7 @@ impl ChangeService {
     // ------------------------------------------------------------------
 
     fn row_to_plan(row: ChangePlanRow) -> ChangeResult<ChangePlan> {
-        let status: ChangeStatus =
-            serde_json::from_value(serde_json::Value::String(row.status))?;
+        let status: ChangeStatus = serde_json::from_value(serde_json::Value::String(row.status))?;
         let operations = serde_json::from_str(&row.operations_json)?;
         let patches = serde_json::from_str(&row.patches_json)?;
         let diff_summary = serde_json::from_str(&row.diff_summary_json)?;
@@ -468,7 +475,10 @@ impl ChangeService {
         // Derive intent_id from the embedded intent_json blob.
         let intent_id: String = serde_json::from_str(&row.intent_json)
             .ok()
-            .and_then(|v: serde_json::Value| v.get("intentId").and_then(|i| i.as_str().map(|s| s.to_string())))
+            .and_then(|v: serde_json::Value| {
+                v.get("intentId")
+                    .and_then(|i| i.as_str().map(|s| s.to_string()))
+            })
             .unwrap_or_default();
 
         let agent_kind: Option<AgentKind> = row
@@ -581,7 +591,8 @@ mod tests {
     #[test]
     fn list_returns_saved_sets() {
         let (_, svc) = svc();
-        svc.save_plan(&dummy_plan("p2", "i2", ChangeStatus::Draft)).unwrap();
+        svc.save_plan(&dummy_plan("p2", "i2", ChangeStatus::Draft))
+            .unwrap();
         let list = svc.list().unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, "p2");
@@ -693,17 +704,15 @@ mod tests {
         assert_eq!(applied.status, ChangeStatus::Applied);
 
         // Read backup_id directly from the DB row.
-        let backup_id: Option<String> = svc
-            .db
-            .with_conn(|c| {
-                c.query_row(
-                    "SELECT backup_id FROM change_sets WHERE id = ?1",
-                    params!["p8"],
-                    |r| r.get(0),
-                )
-                .optional()
-                .unwrap()
-            });
+        let backup_id: Option<String> = svc.db.with_conn(|c| {
+            c.query_row(
+                "SELECT backup_id FROM change_sets WHERE id = ?1",
+                params!["p8"],
+                |r| r.get(0),
+            )
+            .optional()
+            .unwrap()
+        });
         assert!(backup_id.is_some());
 
         // Verify backup manifest exists.
@@ -771,14 +780,16 @@ mod tests {
             fn locate_global_config(
                 &self,
                 _ctx: &crate::adapters::ScanContext,
-            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>> {
+            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>>
+            {
                 Ok(None)
             }
 
             fn locate_project_config(
                 &self,
                 _ctx: &crate::adapters::ScanContext,
-            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>> {
+            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>>
+            {
                 Ok(None)
             }
 
@@ -870,14 +881,16 @@ mod tests {
             fn locate_global_config(
                 &self,
                 _ctx: &crate::adapters::ScanContext,
-            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>> {
+            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>>
+            {
                 Ok(None)
             }
 
             fn locate_project_config(
                 &self,
                 _ctx: &crate::adapters::ScanContext,
-            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>> {
+            ) -> crate::adapters::AdapterResult<Option<crate::adapters::ScopeLocation>>
+            {
                 Ok(None)
             }
 
@@ -953,7 +966,9 @@ mod tests {
         };
 
         let ctx = crate::adapters::ScanContext::empty();
-        let err = svc.create_plan_from_intent(&intent, &reg, &ctx).unwrap_err();
+        let err = svc
+            .create_plan_from_intent(&intent, &reg, &ctx)
+            .unwrap_err();
         assert!(matches!(err, ChangeError::Adapter(_)));
     }
 
@@ -974,7 +989,9 @@ mod tests {
         };
 
         let ctx = crate::adapters::ScanContext::empty();
-        let err = svc.create_plan_from_intent(&intent, &reg, &ctx).unwrap_err();
+        let err = svc
+            .create_plan_from_intent(&intent, &reg, &ctx)
+            .unwrap_err();
         assert!(matches!(err, ChangeError::Adapter(_)));
     }
 }

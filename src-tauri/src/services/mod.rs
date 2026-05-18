@@ -18,17 +18,19 @@ pub use app_data::{AppDataLayout, AppDataService};
 pub use backup::{BackupError, BackupManifest, BackupResult, BackupService};
 pub use changes::{ChangeError, ChangeResult, ChangeService};
 pub use diff::{DiffPreview, DiffPreviewSummary, DiffService, PatchPreview};
-pub use doctor::{DoctorError, DoctorResult, DoctorRule, DoctorService, IssueSummary, RawIssue, RuleContext};
+pub use doctor::{
+    DoctorError, DoctorResult, DoctorRule, DoctorService, IssueSummary, RawIssue, RuleContext,
+};
 pub use doctor_rules::{
     DangerousCommandRule, DisabledButReferencedRule, DuplicateMcpRule, MissingEnvRule,
-    PlaintextSecretRule, PiDuplicatePackageRule, PiMissingPathRule, PiProjectOverrideRule,
-    PiUntrustedExtensionRule, SkillBrokenPathRule, SkillMissingDescriptionRule,
-    SkillMissingEntryRule, SkillUnusedRule, SubAgentMissingMcpRule, SubAgentMissingSkillRule,
-    SubAgentNameConflictRule, SubAgentOverPermissionRule,
+    PiDuplicatePackageRule, PiMissingPathRule, PiProjectOverrideRule, PiUntrustedExtensionRule,
+    PlaintextSecretRule, SkillBrokenPathRule, SkillMissingDescriptionRule, SkillMissingEntryRule,
+    SkillUnusedRule, SubAgentMissingMcpRule, SubAgentMissingSkillRule, SubAgentNameConflictRule,
+    SubAgentOverPermissionRule,
 };
 pub use library::{
     LibraryEntry, LibraryEntryDetail, LibraryError, LibraryKind, LibraryMetadata, LibraryResult,
-    LibraryService,
+    LibraryService, PromptRenderResult,
 };
 pub use projects::{ProjectError, ProjectService};
 pub use resources::{

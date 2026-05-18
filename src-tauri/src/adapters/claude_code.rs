@@ -5,7 +5,9 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
-use crate::domain::{AgentKind, ChangeOperation, FilePatch, McpServer, McpTransport, ScopeType, Skill, SubAgent};
+use crate::domain::{
+    AgentKind, ChangeOperation, FilePatch, McpServer, McpTransport, ScopeType, Skill, SubAgent,
+};
 
 use super::common::{
     command_version, display_path, duplicate_name_warnings, env_ref_keys, first_existing, home_dir,
@@ -221,10 +223,9 @@ impl ClaudeCodeAdapter {
         if let Some(path) = first_existing(&candidates) {
             return Ok(path);
         }
-        candidates
-            .into_iter()
-            .next()
-            .ok_or_else(|| AdapterError::Invalid(format!("no config candidates for scope {scope_type:?}")))
+        candidates.into_iter().next().ok_or_else(|| {
+            AdapterError::Invalid(format!("no config candidates for scope {scope_type:?}"))
+        })
     }
 
     fn build_change_plan_inner(
@@ -313,10 +314,7 @@ impl ClaudeCodeAdapter {
             "disableSkill" | "deleteSkill" => {
                 let slug = extract_slug(&intent.payload)?;
                 if config.skills.remove(&slug).is_none() {
-                    return Err(AdapterError::Invalid(format!(
-                        "Skill '{}' not found",
-                        slug
-                    )));
+                    return Err(AdapterError::Invalid(format!("Skill '{}' not found", slug)));
                 }
             }
             "enableSubAgent" => {
@@ -347,8 +345,8 @@ impl ClaudeCodeAdapter {
             }
         }
 
-        let payload = serde_json::to_value(&config)
-            .map_err(|err| AdapterError::Parse(err.to_string()))?;
+        let payload =
+            serde_json::to_value(&config).map_err(|err| AdapterError::Parse(err.to_string()))?;
         let new_content = serde_json::to_string_pretty(&payload)
             .map_err(|err| AdapterError::Parse(err.to_string()))?;
         let after_hash = sha256_str(&new_content);
@@ -453,7 +451,9 @@ impl AgentAdapter for ClaudeCodeAdapter {
                         sub_agents.extend(outcome.sub_agents);
                         errors.extend(outcome.errors);
                     }
-                    Err(err) => errors.push(format!("{}: {err}", display_path(&location.config_path))),
+                    Err(err) => {
+                        errors.push(format!("{}: {err}", display_path(&location.config_path)))
+                    }
                 }
             }
         }
@@ -532,7 +532,10 @@ fn parse_skill_config(payload: &JsonValue) -> AdapterResult<ClaudeSkillConfig> {
 }
 
 fn parse_agent_config(payload: &JsonValue) -> AdapterResult<ClaudeAgentConfig> {
-    let role = payload.get("role").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let role = payload
+        .get("role")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let description = payload
         .get("description")
         .and_then(|v| v.as_str())
@@ -743,7 +746,7 @@ mod tests {
         let mcp = payload.get("mcpServers").unwrap().get("srv").unwrap();
         assert_eq!(mcp.get("command").unwrap().as_str().unwrap(), "new");
         assert_eq!(mcp.get("args").unwrap().as_array().unwrap()[0], "arg1");
-        assert_eq!(mcp.get("enabled").unwrap().as_bool().unwrap(), true);
+        assert!(mcp.get("enabled").unwrap().as_bool().unwrap());
     }
 
     #[test]
@@ -846,7 +849,10 @@ mod tests {
         let err = adapter
             .build_change_plan(
                 &ctx,
-                &intent("createMcp", serde_json::json!({"name": "srv", "enabled": true})),
+                &intent(
+                    "createMcp",
+                    serde_json::json!({"name": "srv", "enabled": true}),
+                ),
             )
             .unwrap_err();
 
@@ -894,7 +900,10 @@ mod tests {
         let plan = adapter
             .build_change_plan(
                 &ctx,
-                &intent("enableSkill", skill_payload("my-skill", "/tmp/library/skills/my-skill")),
+                &intent(
+                    "enableSkill",
+                    skill_payload("my-skill", "/tmp/library/skills/my-skill"),
+                ),
             )
             .unwrap();
 
@@ -908,7 +917,13 @@ mod tests {
         let skills = payload.get("skills").unwrap();
         assert!(skills.get("my-skill").is_some());
         assert_eq!(
-            skills.get("my-skill").unwrap().get("path").unwrap().as_str().unwrap(),
+            skills
+                .get("my-skill")
+                .unwrap()
+                .get("path")
+                .unwrap()
+                .as_str()
+                .unwrap(),
             "/tmp/library/skills/my-skill"
         );
     }
@@ -925,10 +940,7 @@ mod tests {
         let adapter = ClaudeCodeAdapter::new();
         let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
         let plan = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("enableSkill", skill_payload("dup", "/new")),
-            )
+            .build_change_plan(&ctx, &intent("enableSkill", skill_payload("dup", "/new")))
             .unwrap();
 
         assert_eq!(plan.warnings.len(), 1);
@@ -937,7 +949,13 @@ mod tests {
         let payload = &plan.operations[0].payload;
         let skills = payload.get("skills").unwrap();
         assert_eq!(
-            skills.get("dup").unwrap().get("path").unwrap().as_str().unwrap(),
+            skills
+                .get("dup")
+                .unwrap()
+                .get("path")
+                .unwrap()
+                .as_str()
+                .unwrap(),
             "/new"
         );
     }
@@ -1032,10 +1050,7 @@ mod tests {
         let adapter = ClaudeCodeAdapter::new();
         let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
         let plan = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("enableSubAgent", agent_payload("my-agent")),
-            )
+            .build_change_plan(&ctx, &intent("enableSubAgent", agent_payload("my-agent")))
             .unwrap();
 
         assert_eq!(plan.operations.len(), 1);
@@ -1073,10 +1088,7 @@ mod tests {
         let adapter = ClaudeCodeAdapter::new();
         let ctx = ScanContext::empty().with_fixture(dir.path().to_path_buf());
         let plan = adapter
-            .build_change_plan(
-                &ctx,
-                &intent("enableSubAgent", agent_payload("dup")),
-            )
+            .build_change_plan(&ctx, &intent("enableSubAgent", agent_payload("dup")))
             .unwrap();
 
         assert_eq!(plan.warnings.len(), 1);
