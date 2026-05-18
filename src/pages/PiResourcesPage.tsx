@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 
 import DiffPreview from '../components/DiffPreview';
+import ErrorMessage from '../components/ErrorMessage';
+import PaginationControls from '../components/PaginationControls';
 import { ApiError, api } from '../lib/api';
+import { paginateItems } from '../lib/pagination';
 import type { ChangeIntent, ChangePlan, PiResource, PiResourceKind, ResourceRecord } from '../types/domain';
 
 const RESOURCE_KINDS: PiResourceKind[] = [
@@ -16,6 +19,7 @@ const RESOURCE_KINDS: PiResourceKind[] = [
 
 const PATH_KEYS = ['skills', 'prompt_templates', 'extensions', 'packages', 'themes'];
 const SECURITY_KEYS = ['allow_skill_commands', 'allow_extension_commands'];
+const RESOURCE_PAGE_SIZE = 50;
 
 export default function PiResourcesPage() {
   const [resources, setResources] = useState<ResourceRecord[]>([]);
@@ -28,6 +32,7 @@ export default function PiResourcesPage() {
   const [securityKey, setSecurityKey] = useState(SECURITY_KEYS[0]);
   const [securityEnabled, setSecurityEnabled] = useState(false);
   const [plan, setPlan] = useState<ChangePlan | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -73,6 +78,12 @@ export default function PiResourcesPage() {
     }
     return map;
   }, [resources]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, selectedKind]);
+
+  const page = paginateItems(filtered, currentPage, RESOURCE_PAGE_SIZE);
 
   const hasProjectOverrides = resources.some((resource) => {
     const scopes = new Set(resource.bindings.map((binding) => binding.scopeType));
@@ -144,11 +155,7 @@ export default function PiResourcesPage() {
         </p>
       </header>
 
-      {error && (
-        <div className="dashboard__error" role="alert">
-          [{error.code}] {error.message}
-        </div>
-      )}
+      {error && <ErrorMessage error={error} />}
 
       {hasProjectOverrides && (
         <div className="pi-resources__warning" role="status">
@@ -198,6 +205,7 @@ export default function PiResourcesPage() {
             <div className="page__placeholder">No indexed Pi resources. Rescan a project first.</div>
           ) : (
             <div className="matrix-table__scroll">
+              <PaginationControls page={page} onPageChange={setCurrentPage} />
               <table className="projects__table">
                 <thead>
                   <tr>
@@ -210,7 +218,7 @@ export default function PiResourcesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((resource) => {
+                  {page.items.map((resource) => {
                     const pi = asPiResource(resource.payload);
                     const risk = riskFor(resource, pi);
                     return (

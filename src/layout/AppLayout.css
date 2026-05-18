@@ -347,6 +347,58 @@
   font-size: 13px;
 }
 
+.scan-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.scan-progress__bar {
+  position: relative;
+  width: 80px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--color-border);
+}
+
+.scan-progress__bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 35%;
+  background: var(--color-accent);
+  animation: scan-progress 1s ease-in-out infinite;
+}
+
+.scan-progress--done .scan-progress__bar::after {
+  width: 100%;
+  animation: none;
+  background: var(--color-success);
+}
+
+.scan-progress--failed {
+  color: var(--color-danger);
+}
+
+.scan-progress--failed .scan-progress__bar::after {
+  width: 100%;
+  animation: none;
+  background: var(--color-danger);
+}
+
+@keyframes scan-progress {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(285%);
+  }
+}
+
 .resource-toolbar {
   display: grid;
   grid-template-columns: minmax(240px, 2fr) minmax(160px, 1fr) minmax(180px, 1fr);
@@ -378,6 +430,41 @@
   overflow-x: auto;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+}
+
+.pagination {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.pagination__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pagination button {
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .matrix-table {

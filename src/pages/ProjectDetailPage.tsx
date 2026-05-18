@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+import ErrorMessage from '../components/ErrorMessage';
 import MatrixTable from '../components/MatrixTable';
 import { ApiError, ProjectScanReport, api } from '../lib/api';
 import type { MatrixCell, MatrixRow, Project, ProjectMatrix, ScanSnapshot } from '../types/domain';
@@ -18,6 +19,9 @@ export default function ProjectDetailPage() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [scanStep, setScanStep] = useState<'idle' | 'scan' | 'matrix' | 'done' | 'failed'>(
+    'idle',
+  );
   const [error, setError] = useState<ApiError | null>(null);
 
   const load = useCallback(async () => {
@@ -47,16 +51,20 @@ export default function ProjectDetailPage() {
   async function onRescan() {
     if (!id) return;
     setScanning(true);
+    setScanStep('scan');
     try {
       const r = await api.projects.rescan(id);
+      setScanStep('matrix');
       const projectMatrix = await api.projects.getMatrix(id);
       setReport(r);
       setSnapshots(r.snapshots);
       setMatrix(projectMatrix);
       setSelectedCell(null);
       setError(null);
+      setScanStep('done');
     } catch (err) {
       setError(err as ApiError);
+      setScanStep('failed');
     } finally {
       setScanning(false);
     }
@@ -86,6 +94,7 @@ export default function ProjectDetailPage() {
         <button type="button" onClick={onRescan} disabled={scanning}>
           {scanning ? 'Scanning…' : 'Rescan'}
         </button>
+        {scanStep !== 'idle' && <ScanProgress step={scanStep} />}
         <Link to="/projects" className="project-detail__back">
           Back to projects
         </Link>
@@ -103,11 +112,7 @@ export default function ProjectDetailPage() {
         </label>
       </div>
 
-      {error && (
-        <div className="dashboard__error" role="alert">
-          [{error.code}] {error.message}
-        </div>
-      )}
+      {error && <ErrorMessage error={error} />}
 
       {report && report.adapterErrors.length > 0 && (
         <div className="dashboard__error" role="status">
@@ -259,6 +264,22 @@ export default function ProjectDetailPage() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function ScanProgress({ step }: { step: 'scan' | 'matrix' | 'done' | 'failed' }) {
+  const labels = {
+    scan: 'Scanning adapters',
+    matrix: 'Refreshing matrix',
+    done: 'Scan complete',
+    failed: 'Scan failed, retry is available',
+  };
+
+  return (
+    <div className={`scan-progress scan-progress--${step}`} role="status">
+      <span className="scan-progress__bar" />
+      <span>{labels[step]}</span>
     </div>
   );
 }

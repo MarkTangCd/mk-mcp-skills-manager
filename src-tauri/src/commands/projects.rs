@@ -3,7 +3,7 @@ use tauri::State;
 use crate::adapters::ScanContext;
 use crate::domain::{AgentKind, Project, ScanSnapshot};
 use crate::error::{CommandError, CommandResult};
-use crate::services::{ProjectError, ProjectMatrix};
+use crate::services::{append_app_log, ProjectError, ProjectMatrix};
 use crate::state::AppState;
 
 impl From<ProjectError> for CommandError {
@@ -71,11 +71,28 @@ pub struct AdapterErrorEntry {
 #[tauri::command]
 pub fn projects_rescan(state: State<'_, AppState>, id: String) -> CommandResult<ProjectScanReport> {
     let project = state.projects.get(&id)?;
+    let log_path = state.app_data.layout().logs.join("agenthub.log");
+    let _ = append_app_log(
+        &log_path,
+        &format!(
+            "scan started project_id={} path={}",
+            project.id, project.path
+        ),
+    );
     let ctx = ScanContext::for_project(std::path::PathBuf::from(&project.path));
     let report = state
         .scans
         .run(Some(&project.id), &ctx)
         .map_err(|e| CommandError::new("scan_error", e.to_string()))?;
+    let _ = append_app_log(
+        &log_path,
+        &format!(
+            "scan finished project_id={} snapshots={} adapter_errors={}",
+            project.id,
+            report.snapshots.len(),
+            report.adapter_errors.len()
+        ),
+    );
     Ok(ProjectScanReport {
         snapshots: report.snapshots,
         adapter_errors: report

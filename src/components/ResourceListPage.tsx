@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import ErrorMessage from './ErrorMessage';
+import PaginationControls from './PaginationControls';
 import { ApiError, api } from '../lib/api';
+import { paginateItems } from '../lib/pagination';
 import type { AgentKind, ResourceRecord, ResourceType } from '../types/domain';
 
 interface ResourceListPageProps {
@@ -11,6 +14,7 @@ interface ResourceListPageProps {
 
 const ALL_AGENTS = 'all';
 const ALL_PROJECTS = 'all';
+const RESOURCE_PAGE_SIZE = 50;
 
 export default function ResourceListPage({
   title,
@@ -23,6 +27,7 @@ export default function ResourceListPage({
   const [search, setSearch] = useState('');
   const [agentFilter, setAgentFilter] = useState<AgentKind | typeof ALL_AGENTS>(ALL_AGENTS);
   const [projectFilter, setProjectFilter] = useState(ALL_PROJECTS);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +63,10 @@ export default function ResourceListPage({
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [resources]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, agentFilter, projectFilter, resourceType]);
+
   const filtered = resources.filter((resource) => {
     const query = search.trim().toLowerCase();
     const text = [
@@ -78,6 +87,8 @@ export default function ResourceListPage({
       resource.bindings.some((binding) => binding.projectId === projectFilter);
     return matchesSearch && matchesAgent && matchesProject;
   });
+
+  const page = paginateItems(filtered, currentPage, RESOURCE_PAGE_SIZE);
 
   return (
     <div className="page">
@@ -122,11 +133,7 @@ export default function ResourceListPage({
         </label>
       </div>
 
-      {error && (
-        <div className="dashboard__error" role="alert">
-          [{error.code}] {error.message}
-        </div>
-      )}
+      {error && <ErrorMessage error={error} />}
 
       {loading ? (
         <div className="page__placeholder">Loading…</div>
@@ -134,6 +141,7 @@ export default function ResourceListPage({
         <div className="page__placeholder">No indexed resources. Rescan a project first.</div>
       ) : (
         <div className="matrix-table__scroll">
+          <PaginationControls page={page} onPageChange={setCurrentPage} />
           <table className="projects__table">
             <thead>
               <tr>
@@ -145,7 +153,7 @@ export default function ResourceListPage({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((resource) => (
+              {page.items.map((resource) => (
                 <tr key={resource.id}>
                   <td>
                     <div>{resource.name}</div>

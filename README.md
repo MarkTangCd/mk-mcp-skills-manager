@@ -2,7 +2,7 @@
 
 A local macOS desktop application for managing Claude Code MCP servers, skills, sub-agents and related developer resources. Built on **Tauri 2 + React + TypeScript + Vite + Rust + SQLite**.
 
-> Status: Phase 0 — project skeleton only. No business features are implemented yet.
+> Status: MVP implementation through Phase 10. The app is intended for local self-use and fixture-based validation before managing important real configs.
 
 ## Requirements
 
@@ -20,6 +20,8 @@ pnpm tauri:dev
 ```
 
 The first `tauri:dev` run will compile the Rust side and may take several minutes. Subsequent runs are incremental.
+
+On first launch the app creates its private app-data layout, including the SQLite database, resource library directories, backups, logs, and scan cache. Configuration writes are still routed through preview, backup, apply, rescan, and history recording.
 
 ## Available scripts
 
@@ -42,6 +44,25 @@ cargo fmt --check
 cargo clippy --all-targets --all-features
 ```
 
+## Packaging on macOS
+
+The Tauri bundle metadata lives in `src-tauri/tauri.conf.json`:
+
+- Product name: `AgentHub Local`
+- Identifier: `dev.agenthub.local`
+- Version: `0.1.0`
+- Bundle target: local macOS `.app`
+- Icons: placeholder PNG assets in `src-tauri/icons/`
+- Permissions: `core:default` and `opener:default` only
+
+Build a local macOS app bundle with:
+
+```bash
+pnpm tauri:build
+```
+
+Successful builds are written under `src-tauri/target/release/bundle/macos/`. For MVP validation, open the generated `.app`, confirm the first launch creates app data, then run through `docs/qa/mvp-qa-checklist.md` against fixture or disposable project paths before touching important real agent configs.
+
 ## Project structure
 
 ```
@@ -51,7 +72,7 @@ cargo clippy --all-targets --all-features
 │   ├── main.tsx                # React bootstrap
 │   ├── App.tsx                 # Routes
 │   ├── layout/                 # Shell layout (sidebar, top bar)
-│   ├── pages/                  # Route pages (currently placeholders)
+│   ├── pages/                  # Route pages
 │   └── styles/                 # Global CSS variables
 ├── src-tauri/                  # Rust / Tauri 2 backend
 │   ├── src/lib.rs              # Tauri builder + commands
@@ -59,7 +80,8 @@ cargo clippy --all-targets --all-features
 │   ├── tauri.conf.json         # Tauri app configuration
 │   └── capabilities/           # Permission capabilities
 ├── docs/qa/
-│   └── development-checklist.md # Pre-commit and per-task checklist
+│   ├── development-checklist.md # Pre-commit and per-task checklist
+│   └── mvp-qa-checklist.md      # Phase 10 MVP QA gate
 └── package.json
 ```
 

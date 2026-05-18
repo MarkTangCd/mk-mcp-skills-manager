@@ -22,7 +22,7 @@ use crate::commands::{
     sub_agents_update,
 };
 use crate::db::Database;
-use crate::services::AppDataService;
+use crate::services::{append_app_log, AppDataService};
 use crate::state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,6 +36,7 @@ pub fn run() {
                 .map_err(|e| format!("failed to resolve app data dir: {e}"))?;
             let app_data = AppDataService::initialize(&app_data_root)
                 .map_err(|e| format!("failed to initialize app data: {e}"))?;
+            let _ = append_app_log(app_data.layout().logs.join("agenthub.log"), "app startup");
             let db = Database::open(app_data.layout().database_path.clone())
                 .map_err(|e| format!("failed to open database: {e}"))?;
             app.manage(AppState::new(app_data, db));

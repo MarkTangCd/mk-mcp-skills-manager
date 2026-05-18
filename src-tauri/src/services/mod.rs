@@ -9,6 +9,7 @@ pub mod diff;
 pub mod doctor;
 pub mod doctor_rules;
 pub mod library;
+pub mod logging;
 pub mod projects;
 pub mod resources;
 pub mod scan;
@@ -32,6 +33,7 @@ pub use library::{
     LibraryEntry, LibraryEntryDetail, LibraryError, LibraryKind, LibraryMetadata, LibraryResult,
     LibraryService, PromptRenderResult,
 };
+pub use logging::{append_app_log, redact_secrets};
 pub use projects::{ProjectError, ProjectService};
 pub use resources::{
     MatrixCell, MatrixRow, MatrixSource, PiResourceKindSummary, PiResourceSummary, ProjectMatrix,

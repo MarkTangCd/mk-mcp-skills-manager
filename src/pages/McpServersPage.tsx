@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import DiffPreview from '../components/DiffPreview';
+import ErrorMessage from '../components/ErrorMessage';
 import McpForm from '../components/McpForm';
+import PaginationControls from '../components/PaginationControls';
 import { ApiError, api } from '../lib/api';
 import { useMcpChangeFlow } from '../hooks/useMcpChangeFlow';
+import { paginateItems } from '../lib/pagination';
 import type { ResourceRecord } from '../types/domain';
 
 const ALL_AGENTS = 'all';
 const ALL_PROJECTS = 'all';
+const RESOURCE_PAGE_SIZE = 50;
 
 type AgentKindOrAll = 'claude-code' | 'codex' | 'opencode' | 'pi' | typeof ALL_AGENTS;
 
@@ -18,6 +22,7 @@ export default function McpServersPage() {
   const [search, setSearch] = useState('');
   const [agentFilter, setAgentFilter] = useState<AgentKindOrAll>(ALL_AGENTS);
   const [projectFilter, setProjectFilter] = useState(ALL_PROJECTS);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +76,12 @@ export default function McpServersPage() {
     });
   }, [resources, search, agentFilter, projectFilter]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, agentFilter, projectFilter]);
+
+  const page = paginateItems(filtered, currentPage, RESOURCE_PAGE_SIZE);
+
   const flow = useMcpChangeFlow(load);
 
   return (
@@ -123,19 +134,9 @@ export default function McpServersPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="dashboard__error" role="alert">
-          [{error.code}] {error.message}
-        </div>
-      )}
+      {error && <ErrorMessage error={error} />}
 
-      {flow.actionError && (
-        <div className="dashboard__error" role="alert">
-          {(flow.actionError as ApiError).code
-            ? `[(flow.actionError as ApiError).code] ${flow.actionError.message}`
-            : flow.actionError.message}
-        </div>
-      )}
+      {flow.actionError && <ErrorMessage error={flow.actionError} />}
 
       {loading ? (
         <div className="page__placeholder">Loading…</div>
@@ -143,6 +144,7 @@ export default function McpServersPage() {
         <div className="page__placeholder">No indexed MCP servers. Rescan a project first.</div>
       ) : (
         <div className="matrix-table__scroll">
+          <PaginationControls page={page} onPageChange={setCurrentPage} />
           <table className="projects__table">
             <thead>
               <tr>
@@ -155,7 +157,7 @@ export default function McpServersPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((resource) => (
+              {page.items.map((resource) => (
                 <McpRow
                   key={resource.id}
                   resource={resource}
@@ -191,13 +193,7 @@ export default function McpServersPage() {
       {flow.mode === 'preview' && flow.plan && (
         <div className="modal-overlay">
           <div className="modal-content">
-            {flow.actionError && (
-              <div className="dashboard__error" role="alert" style={{ marginBottom: 'var(--space-3)' }}>
-                {(flow.actionError as ApiError).code
-                  ? `[${(flow.actionError as ApiError).code}] ${flow.actionError.message}`
-                  : flow.actionError.message}
-              </div>
-            )}
+            {flow.actionError && <ErrorMessage error={flow.actionError} />}
             <DiffPreview
               plan={flow.plan}
               onConfirm={
